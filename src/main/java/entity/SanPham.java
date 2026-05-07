@@ -38,9 +38,6 @@ public class SanPham {
     private int soLuongHienCo;
 
     @Column(nullable = false)
-    private double giaNhap;
-
-    @Column(nullable = false)
     private double giaBan;
 
     @Column(name = "urlHinhAnh")

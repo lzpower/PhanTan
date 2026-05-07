@@ -1,5 +1,6 @@
 package dto;
 
+import entity.PaymentMethod;
 import lombok.*;
 
 import java.io.Serializable;
@@ -21,5 +22,6 @@ public class HoaDonDto implements Serializable {
     private String tenKhachHang;
     private String maKhuyenMai;
     private String tenKhuyenMai;
+    private PaymentMethod phuongThucThanhToan;
     private double tongTien;
 }

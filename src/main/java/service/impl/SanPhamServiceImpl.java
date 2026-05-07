@@ -74,14 +74,12 @@ public class SanPhamServiceImpl implements SanPhamService {
 
     private SanPham buildEntity(SanPhamDto dto) {
         LoaiSanPham loaiSanPham = loaiSanPhamDao.findById(dto.getMaLoaiSanPham());
-        double giaBan = dto.getGiaBan() > 0 ? dto.getGiaBan() : dto.getGiaNhap() * 1.5;
         return SanPham.builder()
                 .maSanPham(dto.getMaSanPham())
                 .tenSanPham(dto.getTenSanPham())
                 .loaiSanPham(loaiSanPham)
                 .soLuongHienCo(dto.getSoLuongHienCo())
-                .giaNhap(dto.getGiaNhap())
-                .giaBan(giaBan)
+                .giaBan(dto.getGiaBan())
                 .urlHinhAnh(dto.getUrlHinhAnh())
                 .build();
     }

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -49,6 +51,10 @@ public class HoaDon {
     @JoinColumn(name = "maKhuyenMai")
     @JsonIgnore
     private KhuyenMai khuyenMai;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private PaymentMethod phuongThucThanhToan;
     
     @Column(nullable = false)
     private double tongTien;
@@ -65,13 +71,8 @@ public class HoaDon {
     }
 
     public double getTongTien() {
-        if (danhSachChiTiet != null && !danhSachChiTiet.isEmpty()) {
-            double tong = 0;
-            for (ChiTietHoaDon ct : danhSachChiTiet) {
-                tong += ct.getThanhTien();
-            }
-            return tong;
-        }
+        // Return stored value to avoid lazy initialization of danhSachChiTiet
+        // The collection is only used when adding items in the application
         return tongTien;
     }
 

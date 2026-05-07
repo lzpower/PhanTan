@@ -14,6 +14,9 @@
         <class>entity.KhuyenMai</class>
         <class>entity.HoaDon</class>
         <class>entity.ChiTietHoaDon</class>
+        <class>entity.PhieuNhap</class>
+        <class>entity.ChiTietPhieuNhap</class>
+        <class>entity.NhaCungCap</class>
         <properties>
             <property name="jakarta.persistence.jdbc.driver"
                       value="org.mariadb.jdbc.Driver"/>

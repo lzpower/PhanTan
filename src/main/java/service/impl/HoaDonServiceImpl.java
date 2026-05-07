@@ -10,6 +10,8 @@ import dao.impl.KhuyenMaiDaoImpl;
 import dao.impl.NhanVienDaoImpl;
 import dto.HoaDonDto;
 import entity.HoaDon;
+import entity.PaymentMethod;
+import jakarta.transaction.Transactional;
 import mapper.Mapper;
 import service.HoaDonService;
 
@@ -24,16 +26,19 @@ public class HoaDonServiceImpl implements HoaDonService {
     private final KhuyenMaiDao khuyenMaiDao = new KhuyenMaiDaoImpl();
 
     @Override
+    @Transactional
     public HoaDonDto findById(String maHoaDon) {
         return Mapper.map(dao.findById(maHoaDon));
     }
 
     @Override
+    @Transactional
     public List<HoaDonDto> loadAll() {
         return dao.loadAll().stream().map(item -> Mapper.map(item)).toList();
     }
 
     @Override
+    @Transactional
     public List<HoaDonDto> search(String keyword) {
         String text = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
         return loadAll().stream()
@@ -44,7 +49,9 @@ public class HoaDonServiceImpl implements HoaDonService {
                         || contains(item.getMaKhachHang(), text)
                         || contains(item.getTenKhachHang(), text)
                         || contains(item.getMaKhuyenMai(), text)
-                        || contains(item.getTenKhuyenMai(), text))
+                        || contains(item.getTenKhuyenMai(), text)
+                        || contains(item.getPhuongThucThanhToan() == null ? null : item.getPhuongThucThanhToan().name(), text)
+                        || contains(item.getPhuongThucThanhToan() == null ? null : item.getPhuongThucThanhToan().getDisplayName(), text))
                 .toList();
     }
 
@@ -85,6 +92,7 @@ public class HoaDonServiceImpl implements HoaDonService {
                 .nhanVien(dto.getMaNhanVien() != null ? nhanVienDao.findById(dto.getMaNhanVien()) : null)
                 .khachHang(dto.getMaKhachHang() != null ? khachHangDao.findById(dto.getMaKhachHang()) : null)
                 .khuyenMai(dto.getMaKhuyenMai() != null ? khuyenMaiDao.findById(dto.getMaKhuyenMai()) : null)
+                .phuongThucThanhToan(dto.getPhuongThucThanhToan())
                 .tongTien(dto.getTongTien())
                 .build();
     }

@@ -85,7 +85,11 @@ public final class UiStyle {
             }
         });
 
-        Color hover = color.brighter();
+        Color hover = new Color(
+                Math.max(color.getRed() - 30, 0),
+                Math.max(color.getGreen() - 30, 0),
+                Math.max(color.getBlue() - 30, 0)
+        );
         button.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {

@@ -16,7 +16,7 @@ public class TaiKhoanDaoImpl extends AbstractGenericDaoImpl<TaiKhoan, String> im
     @Override
     public TaiKhoan findById(String id) {
         return doInTransaction(em -> em.createQuery(
-                        "SELECT t FROM TaiKhoan t LEFT JOIN FETCH t.nhanVien WHERE t.tenDangNhap = :id",
+                        "SELECT t FROM TaiKhoan t LEFT JOIN FETCH t.nhanVien nv LEFT JOIN FETCH nv.chucVu WHERE t.tenDangNhap = :id",
                         TaiKhoan.class)
                 .setParameter("id", id)
                 .getResultStream()
@@ -27,7 +27,7 @@ public class TaiKhoanDaoImpl extends AbstractGenericDaoImpl<TaiKhoan, String> im
     @Override
     public List<TaiKhoan> loadAll() {
         return doInTransaction(em -> em.createQuery(
-                        "SELECT DISTINCT t FROM TaiKhoan t LEFT JOIN FETCH t.nhanVien",
+                        "SELECT DISTINCT t FROM TaiKhoan t LEFT JOIN FETCH t.nhanVien nv LEFT JOIN FETCH nv.chucVu",
                         TaiKhoan.class)
                 .getResultList());
     }
