@@ -195,9 +195,10 @@ public final class RemoteServiceProxy {
 
         private CommandType mapThongKe(String methodName) {
             return switch (methodName) {
-                case "thongKeDoanhThu" -> CommandType.THONGKE_DOANHTHU;
-                case "topKhachHang" -> CommandType.THONGKE_TOP_KHACH_HANG;
-                case "topSanPham" -> CommandType.THONGKE_TOP_SAN_PHAM;
+                case "getStats" -> CommandType.THONGKE_GET_STATS;
+                case "getRevenueByDateRange" -> CommandType.THONGKE_GET_REVENUE_BY_DATE_RANGE;
+                case "getTopProducts" -> CommandType.THONGKE_GET_TOP_PRODUCTS;
+                case "getLowStockProducts" -> CommandType.THONGKE_GET_LOW_STOCK_PRODUCTS;
                 default -> throw new IllegalArgumentException("Unsupported method: " + methodName);
             };
         }
@@ -242,15 +243,19 @@ public final class RemoteServiceProxy {
                 return args[0];
             }
             if (serviceType == ThongKeService.class) {
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("year", args[0]);
-                if (args.length > 1) {
-                    payload.put("compareYear", args[1]);
+                if (methodName.equals("getStats") || methodName.equals("getRevenueByDateRange") || methodName.equals("getTopProducts")) {
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("start", args[0]);
+                    payload.put("end", args[1]);
+                    if (methodName.equals("getStats")) {
+                        payload.put("employeeId", args[2]);
+                    }
+                    if (methodName.equals("getTopProducts") && args.length > 2) {
+                        payload.put("limit", args[2]);
+                    }
+                    return payload;
                 }
-                if (args.length > 2) {
-                    payload.put("limit", args[1]);
-                }
-                return payload;
+                return args.length == 1 ? args[0] : List.of(args);
             }
             if (serviceType == NhanVienService.class && "save".equals(methodName)) {
                 return args[0];
@@ -266,12 +271,6 @@ public final class RemoteServiceProxy {
             }
             if (serviceType == ChiTietHoaDonService.class && "delete".equals(methodName)) {
                 return args[0];
-            }
-            if (serviceType == PhieuNhapService.class && "save".equals(methodName)) {
-                Map<String, Object> payload = new LinkedHashMap<>();
-                payload.put("dto", args[0]);
-                payload.put("chiTietList", args.length > 1 ? args[1] : List.of());
-                return payload;
             }
             return args.length == 1 ? args[0] : List.of(args);
         }

@@ -1,19 +1,17 @@
 package dto;
 
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import lombok.*;
 
 import java.io.Serializable;
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 @Getter
 @Setter
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class DashboardStatsDto implements Serializable {
-
-    private int year;
-    private Map<Integer, Double> monthlyRevenue = new LinkedHashMap<>();
-    private Map<Integer, Double> compareMonthlyRevenue = new LinkedHashMap<>();
+    private double totalRevenueToday;
+    private long totalInvoicesToday;
+    private long totalProductsSoldToday;
+    private double employeeRevenueToday;
 }
