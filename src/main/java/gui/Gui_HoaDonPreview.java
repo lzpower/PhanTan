@@ -32,7 +32,7 @@ public class Gui_HoaDonPreview extends JDialog {
 
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
-        setSize(560, 760);
+        setSize(620, 780);
         setLocationRelativeTo(owner);
         getContentPane().setBackground(new Color(241, 245, 249));
 
@@ -42,6 +42,13 @@ public class Gui_HoaDonPreview extends JDialog {
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.getViewport().setBackground(getContentPane().getBackground());
         add(scrollPane, BorderLayout.CENTER);
+
+        // Footer nút đặt ngoài printablePanel để không bị in ra giấy
+        JPanel footerWrapper = new JPanel(new BorderLayout());
+        footerWrapper.setBackground(getContentPane().getBackground());
+        footerWrapper.setBorder(new EmptyBorder(8, 18, 12, 18));
+        footerWrapper.add(buildFooter(), BorderLayout.CENTER);
+        add(footerWrapper, BorderLayout.SOUTH);
     }
 
     private JPanel buildPrintablePanel(List<ChiTietHoaDonDto> details) {
@@ -79,8 +86,6 @@ public class Gui_HoaDonPreview extends JDialog {
         addStacked(card, gbc, divider(), 0);
         addGap(card, gbc, 12);
         addStacked(card, gbc, buildSummary(), 0);
-        addGap(card, gbc, 12);
-        addStacked(card, gbc, buildFooter(), 0);
 
         panel.add(card, BorderLayout.NORTH);
         return panel;
@@ -277,10 +282,6 @@ public class Gui_HoaDonPreview extends JDialog {
         return footer;
     }
 
-    private JComponent buildActions() {
-        return buildFooter();
-    }
-
     private void addStacked(JPanel panel, GridBagConstraints base, JComponent component, double weighty) {
         GridBagConstraints gbc = (GridBagConstraints) base.clone();
         gbc.weighty = weighty;
@@ -311,36 +312,67 @@ public class Gui_HoaDonPreview extends JDialog {
         try {
             PrinterJob job = PrinterJob.getPrinterJob();
             job.setJobName("HoaDon-" + hoaDon.getMaHoaDon());
-            job.setPrintable(new Printable() {
-                @Override
-                public int print(Graphics graphics, PageFormat pageFormat, int pageIndex) throws PrinterException {
-                    if (pageIndex > 0) {
-                        return NO_SUCH_PAGE;
-                    }
-                    Graphics2D g2 = (Graphics2D) graphics.create();
-                    try {
-                        g2.translate(pageFormat.getImageableX(), pageFormat.getImageableY());
-                        Dimension size = printablePanel.getPreferredSize();
-                        double scaleX = pageFormat.getImageableWidth() / size.width;
-                        double scaleY = pageFormat.getImageableHeight() / size.height;
-                        double scale = Math.min(scaleX, scaleY);
-                        if (Double.isNaN(scale) || Double.isInfinite(scale) || scale <= 0) {
-                            scale = 1.0;
-                        }
-                        g2.scale(scale, scale);
-                        printablePanel.printAll(g2);
-                    } finally {
-                        g2.dispose();
-                    }
-                    return PAGE_EXISTS;
+            PageFormat pageFormat = job.defaultPage();
+
+            // Xác định chiều rộng panel in: ưu tiên chiều rộng imageable của trang,
+            // nhưng đổi sang pixel màn hình (72 point/inch → screen DPI)
+            int screenDpi = Toolkit.getDefaultToolkit().getScreenResolution();
+            // pageFormat width là point (1/72 inch) → đổi sang pixel màn hình
+            int panelWidth = (int) (pageFormat.getImageableWidth() / 72.0 * screenDpi);
+            if (panelWidth <= 0) panelWidth = 520;
+
+            // Build panel in riêng biệt hoàn toàn độc lập với ScrollPane
+            // để tránh bị clip theo viewport
+            final JPanel forPrint = buildPrintablePanel_forPrint(panelWidth);
+
+            job.setPrintable((graphics, pf, pageIndex) -> {
+                if (pageIndex > 0) return Printable.NO_SUCH_PAGE;
+                Graphics2D g2 = (Graphics2D) graphics.create();
+                try {
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                    g2.translate(pf.getImageableX(), pf.getImageableY());
+                    Dimension size = forPrint.getSize();
+                    double scaleX = pf.getImageableWidth() / size.width;
+                    double scaleY = pf.getImageableHeight() / size.height;
+                    double scale = Math.min(scaleX, scaleY);
+                    if (Double.isNaN(scale) || Double.isInfinite(scale) || scale <= 0) scale = 1.0;
+                    g2.scale(scale, scale);
+                    forPrint.printAll(g2);
+                } finally {
+                    g2.dispose();
                 }
+                return Printable.PAGE_EXISTS;
             });
+
             if (job.printDialog()) {
                 job.print();
             }
         } catch (PrinterException ex) {
             JOptionPane.showMessageDialog(this, "Không thể in hóa đơn: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Build panel dành riêng cho việc in — không nằm trong ScrollPane,
+     * được layout hoàn chỉnh với chiều rộng cố định trước khi render.
+     */
+    private JPanel buildPrintablePanel_forPrint(int width) {
+        // Lấy details từ printablePanel không khả thi trực tiếp,
+        // nên dùng lại printablePanel (đã build sẵn), chỉ force layout đúng width.
+        // Wrap nó vào một container độc lập để tránh bị JScrollPane clip.
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(printablePanel.getBackground());
+        // Clone panel bằng cách đặt width cố định rồi validate
+        printablePanel.setPreferredSize(null); // reset về preferred tự nhiên
+        // Force layout với đúng width
+        printablePanel.setSize(width, Short.MAX_VALUE);
+        printablePanel.validate();
+        Dimension pref = printablePanel.getPreferredSize();
+        printablePanel.setSize(width, pref.height > 0 ? pref.height : 800);
+        printablePanel.doLayout();
+        // Trả về chính printablePanel đã được layout đúng
+        return printablePanel;
     }
 
     private JLabel sectionTitle(String text) {

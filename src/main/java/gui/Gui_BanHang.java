@@ -31,11 +31,14 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.event.TableModelEvent;
-import javax.swing.event.TableModelListener;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
@@ -47,6 +50,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class Gui_BanHang extends JPanel {
 
@@ -54,12 +58,19 @@ public class Gui_BanHang extends JPanel {
     private static final DecimalFormat VND_FORMAT;
 
     static {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols(new Locale("vi", "VN"));
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.of("vi", "VN"));
         symbols.setGroupingSeparator('.');
         symbols.setDecimalSeparator(',');
         VND_FORMAT = new DecimalFormat("#,##0", symbols);
         VND_FORMAT.setMaximumFractionDigits(0);
     }
+
+    // ── SePay / VietQR ──────────────────────────────────────────────────────────
+    private static final String SEPAY_WEBHOOK_URL  = "https://sepay-receiver.thinh-tools.workers.dev";
+    private static final String VIETQR_BANK_CODE   = "970418";          // BIDV BIN
+    private static final String BANK_ACCOUNT       = "96247NHT3075";
+    private static final String ACCOUNT_NAME       = "NHT3075";
+    private static final HttpClient HTTP_CLIENT    = HttpClient.newHttpClient();
 
     private final HoaDonService hoaDonService = ServiceFactory.get(HoaDonService.class, HoaDonServiceImpl::new);
     private final ChiTietHoaDonService chiTietHoaDonService = ServiceFactory.get(ChiTietHoaDonService.class, ChiTietHoaDonServiceImpl::new);
@@ -83,6 +94,7 @@ public class Gui_BanHang extends JPanel {
     private boolean loadingProducts = false;
     private boolean syncingSelection = false;
     private boolean refreshingTable = false;
+    private boolean updatingCashChange = false;
 
     private JComboBox<ProductOption> cboSanPham;
     private JTextField txtSoLuong;
@@ -149,28 +161,31 @@ public class Gui_BanHang extends JPanel {
         txtTienKhachDua.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                updateCashChange();
+                if (!updatingCashChange) {
+                    updateCashChange();
+                }
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                updateCashChange();
+                if (!updatingCashChange) {
+                    updateCashChange();
+                }
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                updateCashChange();
+                if (!updatingCashChange) {
+                    updateCashChange();
+                }
             }
         });
 
-        chiTietModel.addTableModelListener(new TableModelListener() {
-            @Override
-            public void tableChanged(TableModelEvent e) {
-                if (refreshingTable || e.getType() != TableModelEvent.UPDATE || e.getColumn() != 4) {
-                    return;
-                }
-                updateQuantityFromTable(e.getFirstRow());
+        chiTietModel.addTableModelListener(e -> {
+            if (refreshingTable || e.getType() != TableModelEvent.UPDATE || e.getColumn() != 4) {
+                return;
             }
+            updateQuantityFromTable(e.getFirstRow());
         });
 
         tblChiTiet.getSelectionModel().addListSelectionListener(e -> {
@@ -367,10 +382,14 @@ public class Gui_BanHang extends JPanel {
     }
 
     private JPanel createRightPanel() {
+        // Wrapper dùng BorderLayout: content ở CENTER, nút Thanh toán ở SOUTH
+        JPanel wrapper = new JPanel(new BorderLayout(0, 0));
+        wrapper.setBackground(UiStyle.LIGHT_BG);
+        wrapper.setPreferredSize(new Dimension(430, 0));
+
         JPanel right = new JPanel(new GridBagLayout());
         right.setBackground(UiStyle.LIGHT_BG);
-        right.setBorder(new EmptyBorder(14, 14, 14, 14));
-        right.setPreferredSize(new Dimension(430, 0));
+        right.setBorder(new EmptyBorder(14, 14, 8, 14));
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
@@ -411,8 +430,9 @@ public class Gui_BanHang extends JPanel {
         btnDungDiem = new JButton("Dùng điểm");
         UiStyle.styleButton(btnDungDiem, new Color(59, 130, 246));
         btnDungDiem.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btnDungDiem.setPreferredSize(new Dimension(70, 40));
-        btnDungDiem.setMaximumSize(btnDungDiem.getPreferredSize());
+        btnDungDiem.setPreferredSize(new Dimension(90, 40));
+        btnDungDiem.setMaximumSize(new Dimension(90, 40));
+        btnDungDiem.setMinimumSize(new Dimension(90, 40));
         btnDungDiem.setVisible(false);
         pointsRow.add(btnDungDiem, BorderLayout.EAST);
         gbc.gridy = row++;
@@ -481,25 +501,28 @@ public class Gui_BanHang extends JPanel {
         gbc.gridy = row++;
         right.add(changeRow, gbc);
 
-        gbc.gridy = row++;
-        right.add(spacer(14), gbc);
-
-        JPanel paymentButtons = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 0));
-        paymentButtons.setOpaque(false);
-        btnThanhToan = new JButton("Thanh toán");
-        UiStyle.styleButton(btnThanhToan, new Color(46, 125, 50));
-        btnThanhToan.setForeground(Color.WHITE);
-        paymentButtons.add(btnThanhToan);
-        gbc.gridy = row++;
-        right.add(paymentButtons, gbc);
-
+        // Filler đẩy content lên trên
         JPanel fillerPanel = new JPanel();
         fillerPanel.setOpaque(false);
         gbc.gridy = row;
         gbc.weighty = 1.0;
         right.add(fillerPanel, gbc);
 
-        return right;
+        // Nút Thanh toán cố định ở SOUTH
+        btnThanhToan = new JButton("Thanh toán");
+        UiStyle.styleButton(btnThanhToan, new Color(46, 125, 50));
+        btnThanhToan.setForeground(Color.WHITE);
+        btnThanhToan.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        btnThanhToan.setPreferredSize(new Dimension(0, 46));
+
+        JPanel southPanel = new JPanel(new BorderLayout());
+        southPanel.setBackground(UiStyle.LIGHT_BG);
+        southPanel.setBorder(new EmptyBorder(8, 14, 14, 14));
+        southPanel.add(btnThanhToan, BorderLayout.CENTER);
+
+        wrapper.add(right, BorderLayout.CENTER);
+        wrapper.add(southPanel, BorderLayout.SOUTH);
+        return wrapper;
     }
 
     private JLabel sectionTitle(String title) {
@@ -852,6 +875,8 @@ public class Gui_BanHang extends JPanel {
 
         updateTotals();
         updateButtonState();
+        revalidate();
+        repaint();
     }
 
     private void clearCustomer() {
@@ -865,6 +890,8 @@ public class Gui_BanHang extends JPanel {
         if (suDungDiemRow != null) {
             suDungDiemRow.setVisible(false);
         }
+        revalidate();
+        repaint();
     }
 
     private void toggleDungDiem() {
@@ -887,6 +914,8 @@ public class Gui_BanHang extends JPanel {
             suDungDiemRow.setVisible(suDungDiem && khachHangHienTai != null);
         }
         updateTotals();
+        revalidate();
+        repaint();
     }
 
     private void setPaymentMode(PaymentMethod mode) {
@@ -955,16 +984,21 @@ public class Gui_BanHang extends JPanel {
     }
 
     private void updateCashChange() {
-        if (paymentMode == PaymentMethod.CHUYENKHOAN) {
-            txtTienKhachDua.setText("0");
-            txtTienThoi.setText(formatCurrency(0));
-            return;
-        }
+        updatingCashChange = true;
+        try {
+            if (paymentMode == PaymentMethod.CHUYENKHOAN) {
+                txtTienKhachDua.setText("0");
+                txtTienThoi.setText(formatCurrency(0));
+                return;
+            }
 
-        double tongTien = parseCurrency(lblTongTien.getText());
-        double tienKhachDua = parseCurrency(txtTienKhachDua.getText());
-        double tienThoi = Math.max(0, tienKhachDua - tongTien);
-        txtTienThoi.setText(formatCurrency(tienThoi));
+            double tongTien = parseCurrency(lblTongTien.getText());
+            double tienKhachDua = parseCurrency(txtTienKhachDua.getText());
+            double tienThoi = Math.max(0, tienKhachDua - tongTien);
+            txtTienThoi.setText(formatCurrency(tienThoi));
+        } finally {
+            updatingCashChange = false;
+        }
     }
 
     private void thanhToan() {
@@ -987,6 +1021,14 @@ public class Gui_BanHang extends JPanel {
             JOptionPane.showMessageDialog(this, "Số tiền khách đưa không đủ.", "Thông báo", JOptionPane.WARNING_MESSAGE);
             txtTienKhachDua.requestFocus();
             return;
+        }
+
+        // ── Chuyển khoản: hiển thị QR SePay và đợi xác nhận ─────────────────
+        if (paymentMode == PaymentMethod.CHUYENKHOAN) {
+            boolean paid = showTransferPaymentDialog(tongTien, maHoaDonHienTai);
+            if (!paid) {
+                return;   // người dùng huỷ hoặc đóng cửa sổ
+            }
         }
 
         for (CartItem item : cart.values()) {
@@ -1090,6 +1132,194 @@ public class Gui_BanHang extends JPanel {
 
         loadProducts();
         resetHoaDon();
+    }
+
+    // ── SePay QR payment dialog ──────────────────────────────────────────────────
+    /**
+     * Hiển thị dialog QR VietQR (BIDV) và poll SePay webhook mỗi 3 giây.
+     *
+     * @param tongTien   số tiền cần thanh toán (VNĐ)
+     * @param maHoaDon   mã hóa đơn dùng làm nội dung chuyển khoản (ví dụ "HD001")
+     * @return {@code true} nếu SePay báo PAID, {@code false} nếu hủy
+     */
+    private boolean showTransferPaymentDialog(double tongTien, String maHoaDon) {
+        // Chuẩn hoá mã: chỉ giữ chữ + số, phải khớp regex [a-zA-Z]+\d+
+        String payCode = maHoaDon.toUpperCase().replaceAll("[^A-Z0-9]", "");
+        if (!payCode.matches("[A-Z]+\\d+")) {
+            payCode = "HD" + System.currentTimeMillis() % 100000;
+        }
+        final String finalPayCode = payCode;
+
+        long amountLong = Math.round(tongTien);
+        String qrImageUrl = String.format(
+                "https://img.vietqr.io/image/%s-%s-compact2.png?amount=%d&addInfo=%s&accountName=%s",
+                VIETQR_BANK_CODE, BANK_ACCOUNT, amountLong, finalPayCode, ACCOUNT_NAME
+        );
+
+        // ── Dialog ───────────────────────────────────────────────────────────
+        Window owner = SwingUtilities.getWindowAncestor(this);
+        JDialog dialog = new JDialog(owner, "Thanh toán chuyển khoản", Dialog.ModalityType.APPLICATION_MODAL);
+        dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        dialog.setSize(420, 700);
+        dialog.setLocationRelativeTo(owner);
+        dialog.setLayout(new BorderLayout(0, 0));
+        dialog.setResizable(true);
+
+        // Header
+        JPanel header = new JPanel();
+        header.setBackground(UiStyle.PRIMARY);
+        header.setBorder(new EmptyBorder(14, 16, 14, 16));
+        JLabel headerLbl = new JLabel("Quét mã QR để thanh toán");
+        headerLbl.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        headerLbl.setForeground(Color.WHITE);
+        header.add(headerLbl);
+        dialog.add(header, BorderLayout.NORTH);
+
+        // Center: QR + info
+        JPanel center = new JPanel();
+        center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
+        center.setBackground(Color.WHITE);
+        center.setBorder(new EmptyBorder(16, 24, 12, 24));
+
+        // QR image
+        JLabel qrLabel = new JLabel("Đang tải mã QR…", SwingConstants.CENTER);
+        qrLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        qrLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+        qrLabel.setPreferredSize(new Dimension(280, 280));
+        qrLabel.setMaximumSize(new Dimension(280, 280));
+        qrLabel.setBorder(BorderFactory.createLineBorder(new Color(210, 220, 235)));
+        center.add(qrLabel);
+        center.add(Box.createVerticalStrut(14));
+
+        // Bank info rows
+        String[][] info = {
+                {"Ngân hàng",         "BIDV"},
+                {"Số tài khoản",      BANK_ACCOUNT},
+                {"Chủ tài khoản",     ACCOUNT_NAME},
+                {"Nội dung chuyển khoản", finalPayCode},
+                {"Số tiền",           VND_FORMAT.format(amountLong) + " đ"}
+        };
+        for (String[] row : info) {
+            JPanel rowPanel = new JPanel(new BorderLayout(8, 0));
+            rowPanel.setBackground(Color.WHITE);
+            rowPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+
+            JLabel k = new JLabel(row[0] + ":");
+            k.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+            k.setForeground(new Color(80, 80, 80));
+            k.setPreferredSize(new Dimension(180, 26));
+
+            JLabel v = new JLabel(row[1]);
+            v.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            v.setForeground(row[0].startsWith("Nội dung") ? new Color(59, 130, 246) : new Color(20, 20, 20));
+
+            rowPanel.add(k, BorderLayout.WEST);
+            rowPanel.add(v, BorderLayout.CENTER);
+            center.add(rowPanel);
+            center.add(Box.createVerticalStrut(4));
+        }
+
+        center.add(Box.createVerticalStrut(10));
+
+        // Status label
+        JLabel statusLbl = new JLabel("⏳  Đang chờ xác nhận thanh toán…", SwingConstants.CENTER);
+        statusLbl.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        statusLbl.setForeground(new Color(180, 120, 0));
+        statusLbl.setAlignmentX(Component.CENTER_ALIGNMENT);
+        center.add(statusLbl);
+
+        dialog.add(center, BorderLayout.CENTER);
+
+        // Footer: cancel button
+        JPanel footer = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        footer.setBackground(Color.WHITE);
+        footer.setBorder(new EmptyBorder(0, 0, 10, 0));
+        JButton cancelBtn = new JButton("Hủy thanh toán");
+        UiStyle.styleButton(cancelBtn, new Color(180, 60, 60));
+        cancelBtn.setPreferredSize(new Dimension(180, 40));
+        footer.add(cancelBtn);
+        dialog.add(footer, BorderLayout.SOUTH);
+
+        // ── State ────────────────────────────────────────────────────────────
+        AtomicBoolean paymentConfirmed = new AtomicBoolean(false);
+        AtomicBoolean stopPolling      = new AtomicBoolean(false);
+
+        // Cancel button / window close
+        Runnable doCancel = () -> {
+            stopPolling.set(true);
+            dialog.dispose();
+        };
+        cancelBtn.addActionListener(e -> doCancel.run());
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override public void windowClosing(java.awt.event.WindowEvent e) { doCancel.run(); }
+        });
+
+        // ── Load QR image in background ───────────────────────────────────────
+        Thread qrLoader = new Thread(() -> {
+            try {
+                java.net.URL url = URI.create(qrImageUrl).toURL();
+                Image img = javax.imageio.ImageIO.read(url);
+                if (img != null) {
+                    Image scaled = img.getScaledInstance(276, 276, Image.SCALE_SMOOTH);
+                    SwingUtilities.invokeLater(() -> {
+                        qrLabel.setIcon(new ImageIcon(scaled));
+                        qrLabel.setText("");
+                    });
+                } else {
+                    SwingUtilities.invokeLater(() -> qrLabel.setText("<html><center>Không tải được mã QR.<br>Vui lòng chuyển khoản thủ công.</center></html>"));
+                }
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() -> qrLabel.setText("<html><center>Lỗi tải QR.<br>Chuyển khoản thủ công rồi bấm xác nhận.</center></html>"));
+            }
+        }, "qr-loader");
+        qrLoader.setDaemon(true);
+        qrLoader.start();
+
+        // ── Polling timer (every 3 s on EDT via Swing Timer) ─────────────────
+        Timer[] timerRef = {null};
+        timerRef[0] = new Timer(3000, e -> {
+            if (stopPolling.get()) { timerRef[0].stop(); return; }
+            // Run HTTP call off EDT
+            Thread poller = new Thread(() -> {
+                try {
+                    String checkUrl = SEPAY_WEBHOOK_URL + "?code=" + finalPayCode;
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(checkUrl))
+                            .GET()
+                            .timeout(java.time.Duration.ofSeconds(8))
+                            .build();
+                    HttpResponse<String> resp = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+                    String body = resp.body();
+                    if (body != null && body.contains("\"status\":\"PAID\"")) {
+                        stopPolling.set(true);
+                        paymentConfirmed.set(true);
+                        SwingUtilities.invokeLater(() -> {
+                            timerRef[0].stop();
+                            statusLbl.setText("✅  Thanh toán thành công!");
+                            statusLbl.setForeground(new Color(46, 125, 50));
+                            cancelBtn.setEnabled(false);
+                            // Short delay so user sees the success message
+                            Timer closeTimer = new Timer(1200, ev -> dialog.dispose());
+                            closeTimer.setRepeats(false);
+                            closeTimer.start();
+                        });
+                    }
+                } catch (Exception ex) {
+                    // Network hiccup — will retry next tick
+                }
+            }, "sepay-poller");
+            poller.setDaemon(true);
+            poller.start();
+        });
+        timerRef[0].setInitialDelay(2000);
+        timerRef[0].start();
+
+        // ── Show dialog (blocks until disposed) ──────────────────────────────
+        dialog.setVisible(true);
+        timerRef[0].stop();
+        stopPolling.set(true);
+
+        return paymentConfirmed.get();
     }
 
     private void refreshCartTable() {
@@ -1247,11 +1477,11 @@ public class Gui_BanHang extends JPanel {
             }
 
             try {
-                java.awt.Image img = null;
+                Image img = null;
 
                 // 1. Kiểm tra nếu là Link Web (URL)
                 if (path.startsWith("http://") || path.startsWith("https://")) {
-                    img = javax.imageio.ImageIO.read(new java.net.URL(path));
+                    img = javax.imageio.ImageIO.read(URI.create(path).toURL());
                 }
                 // 2. Nếu là file local trong máy tính
                 else {
@@ -1264,7 +1494,7 @@ public class Gui_BanHang extends JPanel {
                 // 3. Render ảnh ra Label
                 if (img != null) {
                     // Giữ kích thước 64x48 theo thiết kế cũ của bạn
-                    java.awt.Image scaledImg = img.getScaledInstance(64, 48, java.awt.Image.SCALE_SMOOTH);
+                    Image scaledImg = img.getScaledInstance(64, 48, Image.SCALE_SMOOTH);
                     label.setIcon(new ImageIcon(scaledImg));
                     label.setText("");
                 } else {
