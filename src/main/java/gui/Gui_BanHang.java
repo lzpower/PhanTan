@@ -465,7 +465,7 @@ public class Gui_BanHang extends JPanel {
         row = addInfoRow(right, gbc, row, "Giảm giá", lblGiamGia);
         lblSuDungDiem = createValueLabel();
         suDungDiemRow = createInfoRow("Sử dụng điểm", lblSuDungDiem);
-        suDungDiemRow.setVisible(false);
+        suDungDiemRow.setVisible(true);
         gbc.gridy = row++;
         right.add(suDungDiemRow, gbc);
         lblTongTien = createValueLabel();
@@ -588,7 +588,7 @@ public class Gui_BanHang extends JPanel {
         return spacer;
     }
 
-    private void loadProducts() {
+    public void loadProducts() {
         loadingProducts = true;
         cboSanPham.removeAllItems();
         List<SanPhamDto> products = sanPhamService.loadAll();
@@ -650,8 +650,10 @@ public class Gui_BanHang extends JPanel {
         cboKhuyenMai.setSelectedIndex(0);
         btnDungDiem.setText("Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
+        // enable UI controls now that an invoice exists
+        setUiEnabled(true);
 
         refreshCartTable();
         updateTotals();
@@ -888,7 +890,7 @@ public class Gui_BanHang extends JPanel {
         diemDaSuDung = 0;
         btnDungDiem.setText("Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
         revalidate();
         repaint();
@@ -911,7 +913,7 @@ public class Gui_BanHang extends JPanel {
         suDungDiem = !suDungDiem;
         btnDungDiem.setText(suDungDiem ? "Bỏ điểm" : "Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(suDungDiem && khachHangHienTai != null);
+            suDungDiemRow.setVisible(true);
         }
         updateTotals();
         revalidate();
@@ -1091,8 +1093,8 @@ public class Gui_BanHang extends JPanel {
                     int diemDaCo = latest.getSoDiem();
                     int diemMoi = (int) Math.round(tongCong / 10000.0);
                     int tongDiem = Math.max(0, diemDaCo - (suDungDiem ? diemDaSuDung : 0)) + diemMoi;
-                    latest.setSoDiem(tongDiem);
-                    khachHangService.update(latest);
+                    // update points directly to avoid phone-unique validation during points-only update
+                    khachHangService.updatePoints(latest.getMaKhachHang(), tongDiem);
                 }
             }
         } catch (Exception ex) {
@@ -1132,6 +1134,25 @@ public class Gui_BanHang extends JPanel {
 
         loadProducts();
         resetHoaDon();
+
+        // try to refresh invoice list panel if present
+        Window w = SwingUtilities.getWindowAncestor(this);
+        Gui_HoaDon hoaDonPanel = findComponentRecursively(w, Gui_HoaDon.class);
+        if (hoaDonPanel != null) {
+            hoaDonPanel.refreshData();
+        }
+    }
+
+    private <T> T findComponentRecursively(Component root, Class<T> cls) {
+        if (root == null) return null;
+        if (cls.isInstance(root)) return cls.cast(root);
+        if (root instanceof Container) {
+            for (Component c : ((Container) root).getComponents()) {
+                T found = findComponentRecursively(c, cls);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     // ── SePay QR payment dialog ──────────────────────────────────────────────────
@@ -1372,7 +1393,7 @@ public class Gui_BanHang extends JPanel {
         txtTienKhachDua.setText("0");
         txtTienThoi.setText(formatCurrency(0));
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
 
         if (cboKhuyenMai.getItemCount() > 0) {
@@ -1382,6 +1403,27 @@ public class Gui_BanHang extends JPanel {
         refreshCartTable();
         updatePaymentModeUi();
         updateButtonState();
+        // disable interactive controls until invoice is created
+        setUiEnabled(false);
+    }
+
+    private void setUiEnabled(boolean enabled) {
+        // btnTaoHoaDon should always stay enabled so user can create invoice
+        boolean controls = enabled;
+        cboSanPham.setEnabled(controls);
+        txtSoLuong.setEnabled(controls);
+        tblChiTiet.setEnabled(controls);
+        btnXoaSanPham.setEnabled(controls && tblChiTiet.getSelectedRow() >= 0);
+        btnLamRong.setEnabled(controls && !cart.isEmpty());
+        btnTimKhachHang.setEnabled(controls);
+        btnDungDiem.setEnabled(controls && khachHangHienTai != null && khachHangHienTai.getSoDiem() > 0);
+        cboKhuyenMai.setEnabled(controls);
+        btnTienMat.setEnabled(controls);
+        btnChuyenKhoan.setEnabled(controls);
+        txtTienKhachDua.setEnabled(controls && paymentMode == PaymentMethod.TIENMAT);
+        btnThanhToan.setEnabled(controls && !cart.isEmpty());
+        revalidate();
+        repaint();
     }
 
     private void updateButtonState() {
@@ -1465,45 +1507,15 @@ public class Gui_BanHang extends JPanel {
             JLabel label = new JLabel();
             label.setOpaque(true);
             label.setHorizontalAlignment(SwingConstants.CENTER);
-
-            // Giữ nguyên logic màu nền xen kẽ của bạn
             label.setBackground(isSelected ? table.getSelectionBackground() : (row % 2 == 0 ? Color.WHITE : UiStyle.ROW_ODD));
-
             String path = value == null ? "" : String.valueOf(value);
-            if (path.isBlank()) {
-                label.setIcon(null);
-                label.setText("");
-                return label;
-            }
-
-            try {
-                Image img = null;
-
-                // 1. Kiểm tra nếu là Link Web (URL)
-                if (path.startsWith("http://") || path.startsWith("https://")) {
-                    img = javax.imageio.ImageIO.read(URI.create(path).toURL());
-                }
-                // 2. Nếu là file local trong máy tính
-                else {
-                    java.io.File file = new java.io.File(path);
-                    if (file.exists()) {
-                        img = javax.imageio.ImageIO.read(file);
-                    }
-                }
-
-                // 3. Render ảnh ra Label
-                if (img != null) {
-                    // Giữ kích thước 64x48 theo thiết kế cũ của bạn
-                    Image scaledImg = img.getScaledInstance(64, 48, Image.SCALE_SMOOTH);
-                    label.setIcon(new ImageIcon(scaledImg));
-                    label.setText("");
+            if (!path.isBlank()) {
+                ImageIcon icon = TableUtility.loadIcon(path, 64, 48);
+                if (icon != null) {
+                    label.setIcon(icon);
                 } else {
-                    label.setIcon(null);
-                    label.setText("Lỗi ảnh");
+                    label.setText(path);
                 }
-            } catch (Exception e) {
-                label.setIcon(null);
-                label.setText("Lỗi URL");
             }
             return label;
         }

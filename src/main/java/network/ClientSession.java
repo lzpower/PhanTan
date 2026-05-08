@@ -2,8 +2,8 @@ package network;
 
 public final class ClientSession {
 
-    private static volatile boolean remoteMode = true;
-    private static volatile String host = "DESKTOP-HAK9M95";
+    private static volatile boolean remoteMode = false;
+    private static volatile String host = "Dell-6N85";
     private static volatile int port = 9090;
     private static volatile String clientName = defaultClientName();
 

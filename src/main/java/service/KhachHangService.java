@@ -10,6 +10,7 @@ public interface KhachHangService {
     List<KhachHangDto> search(String keyword);
     KhachHangDto save(KhachHangDto dto);
     KhachHangDto update(KhachHangDto dto);
+    KhachHangDto updatePoints(String maKhachHang, int soDiem);
     boolean delete(String maKhachHang);
     String nextId();
 }

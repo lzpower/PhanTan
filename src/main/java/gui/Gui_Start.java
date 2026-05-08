@@ -12,7 +12,7 @@ import com.formdev.flatlaf.themes.FlatMacLightLaf;
 import dto.TaiKhoanDto;
 import service.TaiKhoanService;
 import service.ServiceFactory;
-import network.ClientSession;
+import service.impl.TaiKhoanServiceImpl;
 
 public class Gui_Start extends JFrame implements ActionListener {
     private static final long serialVersionUID = 1L;
@@ -32,8 +32,7 @@ public class Gui_Start extends JFrame implements ActionListener {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
-        ClientSession.configureRemote("DESKTOP-HAK9M95", 9090, ClientSession.defaultClientName());
-        taiKhoanService = ServiceFactory.get(TaiKhoanService.class, () -> null);
+        taiKhoanService = ServiceFactory.get(TaiKhoanService.class, TaiKhoanServiceImpl::new);
 
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new GridBagLayout());
@@ -197,8 +196,8 @@ public class Gui_Start extends JFrame implements ActionListener {
                     UIManager.put("defaultFont", new Font("Segoe UI Semibold", Font.PLAIN, 14));
                     UIManager.put("TextComponent.arc", 12);
                     UIManager.put("Button.arc", 12);
-//                    new Gui_Start().setVisible(true);
-                    new Gui_Chinh("admin").setVisible(true);
+                    network.ClientSession.configureLocal();
+                    new Gui_Start().setVisible(true);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

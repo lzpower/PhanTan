@@ -17,6 +17,7 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -35,6 +36,7 @@ public class Gui_HoaDon extends JPanel {
     private DatePicker dpNgayLoc;
     private JTable table;
     private DefaultTableModel model;
+    private TableRowSorter<DefaultTableModel> sorter;
 
     public Gui_HoaDon() {
         setLayout(new BorderLayout());
@@ -130,6 +132,10 @@ public class Gui_HoaDon extends JPanel {
             }
         };
         table = new JTable(model);
+        sorter = new TableRowSorter<>(model);
+        table.setRowSorter(sorter);
+        sorter.setSortKeys(List.of(new RowSorter.SortKey(2, SortOrder.ASCENDING)));
+        sorter.sort();
 
         JScrollPane scrollPane = new JScrollPane(table);
         UiStyle.styleTable(table, scrollPane);
@@ -166,8 +172,9 @@ public class Gui_HoaDon extends JPanel {
         loadData(items);
     }
 
-    private void refreshData() {
+    public void refreshData() {
         filter();
+        sorter.sort();
     }
 
     private void showDetailForSelectedRow() {

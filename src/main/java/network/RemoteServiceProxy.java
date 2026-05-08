@@ -128,6 +128,12 @@ public final class RemoteServiceProxy {
                 case "search" -> CommandType.valueOf(prefix + "_SEARCH");
                 case "save" -> CommandType.valueOf(prefix + "_SAVE");
                 case "update" -> CommandType.valueOf(prefix + "_UPDATE");
+                case "updatePoints" -> {
+                    if ("KHACHHANG".equals(prefix)) {
+                        yield CommandType.KHACHHANG_UPDATE_POINTS;
+                    }
+                    throw new IllegalArgumentException("Unsupported method: " + serviceType.getSimpleName() + "." + methodName);
+                }
                 case "delete" -> CommandType.valueOf(prefix + "_DELETE");
                 case "nextId" -> CommandType.valueOf(prefix + "_NEXT_ID");
                 default -> throw new IllegalArgumentException("Unsupported method: " + serviceType.getSimpleName() + "." + methodName);
@@ -237,6 +243,12 @@ public final class RemoteServiceProxy {
                 Map<String, String> payload = new LinkedHashMap<>();
                 payload.put("maNhanVien", String.valueOf(args[0]));
                 payload.put("tenNhanVien", String.valueOf(args[1]));
+                return payload;
+            }
+            if (serviceType == KhachHangService.class && "updatePoints".equals(methodName)) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("maKhachHang", args[0]);
+                payload.put("soDiem", args[1]);
                 return payload;
             }
             if (serviceType == PhieuNhapService.class && "loadDetails".equals(methodName)) {

@@ -177,6 +177,10 @@ public class Server {
                     case KHACHHANG_SEARCH -> ok(khachHangService.search((String) request.getData()), "loaded");
                     case KHACHHANG_SAVE -> ok(khachHangService.save((KhachHangDto) request.getData()), "saved");
                     case KHACHHANG_UPDATE -> ok(khachHangService.update((KhachHangDto) request.getData()), "updated");
+                    case KHACHHANG_UPDATE_POINTS -> {
+                        Map<String, Object> payload = (Map<String, Object>) request.getData();
+                        yield ok(khachHangService.updatePoints((String) payload.get("maKhachHang"), ((Number) payload.get("soDiem")).intValue()), "updated");
+                    }
                     case KHACHHANG_DELETE -> new Response(khachHangService.delete((String) request.getData()), null, "deleted");
                     case KHACHHANG_NEXT_ID -> ok(khachHangService.nextId(), "generated");
 
