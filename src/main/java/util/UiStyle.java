@@ -154,7 +154,7 @@ public final class UiStyle {
         if (toggleButton != null) {
             toggleButton.setText("");
             toggleButton.setIcon(loadIcon("/icon/datepicker.png", 20, 20));
-            toggleButton.setPreferredSize(new Dimension(45, 45));
+            toggleButton.setPreferredSize(new Dimension(35, 35));
             toggleButton.setBackground(Color.WHITE);
         }
     }

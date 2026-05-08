@@ -45,6 +45,7 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -222,25 +223,20 @@ public class Server {
                     case KHUYENMAI_DELETE -> new Response(khuyenMaiService.delete((String) request.getData()), null, "deleted");
                     case KHUYENMAI_NEXT_ID -> ok(khuyenMaiService.nextId(), "generated");
 
-                    case THONGKE_DOANHTHU -> {
+                                        case THONGKE_GET_STATS -> {
                         Map<String, Object> payload = (Map<String, Object>) request.getData();
-                        int year = ((Number) payload.get("year")).intValue();
-                        Integer compareYear = payload.get("compareYear") != null ? ((Number) payload.get("compareYear")).intValue() : null;
-                        DashboardStatsDto stats = thongKeService.thongKeDoanhThu(year, compareYear);
-                        yield ok(stats, "loaded");
+                        yield ok(thongKeService.getStats((LocalDate) payload.get("start"), (LocalDate) payload.get("end"), (String) payload.get("employeeId")), "loaded");
                     }
-                    case THONGKE_TOP_KHACH_HANG -> {
+                    case THONGKE_GET_REVENUE_BY_DATE_RANGE -> {
                         Map<String, Object> payload = (Map<String, Object>) request.getData();
-                        int year = ((Number) payload.get("year")).intValue();
-                        int limit = ((Number) payload.getOrDefault("limit", 5)).intValue();
-                        yield ok(thongKeService.topKhachHang(year, limit), "loaded");
+                        yield ok(thongKeService.getRevenueByDateRange((LocalDate) payload.get("start"), (LocalDate) payload.get("end")), "loaded");
                     }
-                    case THONGKE_TOP_SAN_PHAM -> {
+                    case THONGKE_GET_TOP_PRODUCTS -> {
                         Map<String, Object> payload = (Map<String, Object>) request.getData();
-                        int year = ((Number) payload.get("year")).intValue();
-                        int limit = ((Number) payload.getOrDefault("limit", 5)).intValue();
-                        yield ok(thongKeService.topSanPham(year, limit), "loaded");
+                        int limit = payload.get("limit") != null ? ((Number) payload.get("limit")).intValue() : 10;
+                        yield ok(thongKeService.getTopProducts((LocalDate) payload.get("start"), (LocalDate) payload.get("end"), limit), "loaded");
                     }
+                    case THONGKE_GET_LOW_STOCK_PRODUCTS -> ok(thongKeService.getLowStockProducts(((Number) request.getData()).intValue()), "loaded");
                 };
             } catch (Exception ex) {
                 return fail(ex.getMessage());
@@ -265,3 +261,5 @@ public class Server {
         }
     }
 }
+
+

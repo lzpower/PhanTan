@@ -77,7 +77,7 @@ public class Gui_Chinh extends JFrame {
         contentPanel.add(new Gui_QuanLiKhuyenMai(), "khuyenmai");
         contentPanel.add(new Gui_ChucVu(), "chucvu");
         contentPanel.add(new Gui_HoaDon(), "hoadon");
-        contentPanel.add(new Gui_ThongKe(), "thongke");
+        contentPanel.add(new Gui_ThongKe(tenDangNhap), "thongke");
 
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBorder(new EmptyBorder(0, 0, 0, 0));

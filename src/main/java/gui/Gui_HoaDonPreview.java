@@ -21,7 +21,7 @@ public class Gui_HoaDonPreview extends JDialog {
 
     private static final DateTimeFormatter DISPLAY_TIME = DateTimeFormatter.ofPattern("HH:mm d 'thg' M, yyyy", new Locale("vi", "VN"));
 
-    private JPanel printablePanel;
+    private final JPanel printablePanel;
     private final HoaDonDto hoaDon;
     private final PaymentSummary paymentSummary;
 
@@ -32,90 +32,63 @@ public class Gui_HoaDonPreview extends JDialog {
 
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
-        setSize(560, 760);
+        setSize(620, 780);
         setLocationRelativeTo(owner);
         getContentPane().setBackground(new Color(241, 245, 249));
 
-        JPanel full = buildPrintablePanel(details);
-        // printablePanel is set inside buildPrintablePanel to the inner card (print-only)
-        JScrollPane scrollPane = new JScrollPane(full);
+        printablePanel = buildPrintablePanel(details);
+        JScrollPane scrollPane = new JScrollPane(printablePanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.getViewport().setBackground(getContentPane().getBackground());
         add(scrollPane, BorderLayout.CENTER);
+
+        // Footer nút đặt ngoài printablePanel để không bị in ra giấy
+        JPanel footerWrapper = new JPanel(new BorderLayout());
+        footerWrapper.setBackground(getContentPane().getBackground());
+        footerWrapper.setBorder(new EmptyBorder(8, 18, 12, 18));
+        footerWrapper.add(buildFooter(), BorderLayout.CENTER);
+        add(footerWrapper, BorderLayout.SOUTH);
     }
 
     private JPanel buildPrintablePanel(List<ChiTietHoaDonDto> details) {
-            JPanel panel = new JPanel(new BorderLayout());
-            panel.setBackground(getContentPane().getBackground());
-            panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(getContentPane().getBackground());
+        panel.setBorder(new EmptyBorder(18, 18, 18, 18));
 
-            boolean successMode = paymentSummary.hasPaymentData();
+        boolean successMode = paymentSummary.hasPaymentData();
 
-            // header (UI-only, contains status title) - do not include in printable panel
-            JComponent header = buildHeader(successMode);
-            panel.add(header, BorderLayout.NORTH);
+        JPanel card = new JPanel(new GridBagLayout());
+        card.setBackground(Color.WHITE);
+        card.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(226, 232, 240)),
+                new EmptyBorder(18, 18, 18, 18)
+        ));
+        card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-            // card is the print-only content (invoice layout). Keep a reference to it in printablePanel.
-            JPanel card = new JPanel(new GridBagLayout());
-            card.setBackground(Color.WHITE);
-            card.setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                    new EmptyBorder(18, 18, 18, 18)
-            ));
-            card.setAlignmentX(Component.LEFT_ALIGNMENT);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
 
-            GridBagConstraints gbc = new GridBagConstraints();
-            gbc.gridx = 0;
-            gbc.gridy = 0;
-            gbc.weightx = 1;
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            gbc.anchor = GridBagConstraints.NORTHWEST;
+        addStacked(card, gbc, buildHeader(successMode), 0);
+        addGap(card, gbc, 14);
+        addStacked(card, gbc, buildInvoiceMeta(), 0);
+        addGap(card, gbc, 14);
+        addStacked(card, gbc, divider(), 0);
+        addGap(card, gbc, 12);
+        addStacked(card, gbc, sectionTitle(successMode ? "Chi tiết thanh toán" : "Chi tiết hóa đơn"), 0);
+        addGap(card, gbc, 8);
+        addStacked(card, gbc, buildItems(details), 1);
+        addGap(card, gbc, 14);
+        addStacked(card, gbc, divider(), 0);
+        addGap(card, gbc, 12);
+        addStacked(card, gbc, buildSummary(), 0);
 
-            addGap(card, gbc, 0);
-            addStacked(card, gbc, buildInvoiceMeta(), 0);
-            addGap(card, gbc, 14);
-            addStacked(card, gbc, divider(), 0);
-            addGap(card, gbc, 12);
-            addStacked(card, gbc, sectionTitle(successMode ? "Chi tiết thanh toán" : "Chi tiết hóa đơn"), 0);
-            addGap(card, gbc, 8);
-            addStacked(card, gbc, buildItems(details), 1);
-            addGap(card, gbc, 14);
-            addStacked(card, gbc, divider(), 0);
-            addGap(card, gbc, 12);
-            addStacked(card, gbc, buildSummary(), 0);
-            addGap(card, gbc, 12);
-
-            // set printablePanel to the inner card so printing excludes header/title
-            this.printablePanel = card;
-
-            panel.add(card, BorderLayout.CENTER);
-
-            // actions (buttons) - place under card in the UI but not part of printed panel
-            JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-            actions.setOpaque(false);
-            JButton btnPrint = new JButton("In hóa đơn");
-            UiStyle.styleButton(btnPrint, new Color(34, 197, 94));
-            btnPrint.setPreferredSize(new Dimension(160, 40));
-            btnPrint.addActionListener(e -> printReceipt());
-
-            JButton btnPrimary = new JButton(paymentSummary.hasPaymentData() ? "Đơn mới" : "Đóng");
-            UiStyle.styleButton(btnPrimary, paymentSummary.hasPaymentData() ? new Color(16, 185, 129) : new Color(148, 163, 184));
-            btnPrimary.setPreferredSize(new Dimension(160, 40));
-            btnPrimary.addActionListener(e -> dispose());
-
-            if (paymentSummary.hasPaymentData()) {
-                actions.add(btnPrint);
-                actions.add(btnPrimary);
-            } else {
-                actions.add(btnPrimary);
-                actions.add(btnPrint);
-            }
-            panel.add(actions, BorderLayout.SOUTH);
-
-            // ensure printable panel pref size fits content
-            card.setPreferredSize(card.getPreferredSize());
-            return panel;
+        panel.add(card, BorderLayout.NORTH);
+        return panel;
     }
 
     private JComponent buildHeader(boolean successMode) {
@@ -309,10 +282,6 @@ public class Gui_HoaDonPreview extends JDialog {
         return footer;
     }
 
-    private JComponent buildActions() {
-        return buildFooter();
-    }
-
     private void addStacked(JPanel panel, GridBagConstraints base, JComponent component, double weighty) {
         GridBagConstraints gbc = (GridBagConstraints) base.clone();
         gbc.weighty = weighty;
@@ -343,36 +312,67 @@ public class Gui_HoaDonPreview extends JDialog {
         try {
             PrinterJob job = PrinterJob.getPrinterJob();
             job.setJobName("HoaDon-" + hoaDon.getMaHoaDon());
-            job.setPrintable(new Printable() {
-                @Override
-                public int print(Graphics graphics, PageFormat pageFormat, int pageIndex) throws PrinterException {
-                    if (pageIndex > 0) {
-                        return NO_SUCH_PAGE;
-                    }
-                    Graphics2D g2 = (Graphics2D) graphics.create();
-                    try {
-                        g2.translate(pageFormat.getImageableX(), pageFormat.getImageableY());
-                        Dimension size = printablePanel.getPreferredSize();
-                        double scaleX = pageFormat.getImageableWidth() / size.width;
-                        double scaleY = pageFormat.getImageableHeight() / size.height;
-                        double scale = Math.min(scaleX, scaleY);
-                        if (Double.isNaN(scale) || Double.isInfinite(scale) || scale <= 0) {
-                            scale = 1.0;
-                        }
-                        g2.scale(scale, scale);
-                        printablePanel.printAll(g2);
-                    } finally {
-                        g2.dispose();
-                    }
-                    return PAGE_EXISTS;
+            PageFormat pageFormat = job.defaultPage();
+
+            // Xác định chiều rộng panel in: ưu tiên chiều rộng imageable của trang,
+            // nhưng đổi sang pixel màn hình (72 point/inch → screen DPI)
+            int screenDpi = Toolkit.getDefaultToolkit().getScreenResolution();
+            // pageFormat width là point (1/72 inch) → đổi sang pixel màn hình
+            int panelWidth = (int) (pageFormat.getImageableWidth() / 72.0 * screenDpi);
+            if (panelWidth <= 0) panelWidth = 520;
+
+            // Build panel in riêng biệt hoàn toàn độc lập với ScrollPane
+            // để tránh bị clip theo viewport
+            final JPanel forPrint = buildPrintablePanel_forPrint(panelWidth);
+
+            job.setPrintable((graphics, pf, pageIndex) -> {
+                if (pageIndex > 0) return Printable.NO_SUCH_PAGE;
+                Graphics2D g2 = (Graphics2D) graphics.create();
+                try {
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+                    g2.translate(pf.getImageableX(), pf.getImageableY());
+                    Dimension size = forPrint.getSize();
+                    double scaleX = pf.getImageableWidth() / size.width;
+                    double scaleY = pf.getImageableHeight() / size.height;
+                    double scale = Math.min(scaleX, scaleY);
+                    if (Double.isNaN(scale) || Double.isInfinite(scale) || scale <= 0) scale = 1.0;
+                    g2.scale(scale, scale);
+                    forPrint.printAll(g2);
+                } finally {
+                    g2.dispose();
                 }
+                return Printable.PAGE_EXISTS;
             });
+
             if (job.printDialog()) {
                 job.print();
             }
         } catch (PrinterException ex) {
             JOptionPane.showMessageDialog(this, "Không thể in hóa đơn: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
         }
+    }
+
+    /**
+     * Build panel dành riêng cho việc in — không nằm trong ScrollPane,
+     * được layout hoàn chỉnh với chiều rộng cố định trước khi render.
+     */
+    private JPanel buildPrintablePanel_forPrint(int width) {
+        // Lấy details từ printablePanel không khả thi trực tiếp,
+        // nên dùng lại printablePanel (đã build sẵn), chỉ force layout đúng width.
+        // Wrap nó vào một container độc lập để tránh bị JScrollPane clip.
+        JPanel wrapper = new JPanel(new BorderLayout());
+        wrapper.setBackground(printablePanel.getBackground());
+        // Clone panel bằng cách đặt width cố định rồi validate
+        printablePanel.setPreferredSize(null); // reset về preferred tự nhiên
+        // Force layout với đúng width
+        printablePanel.setSize(width, Short.MAX_VALUE);
+        printablePanel.validate();
+        Dimension pref = printablePanel.getPreferredSize();
+        printablePanel.setSize(width, pref.height > 0 ? pref.height : 800);
+        printablePanel.doLayout();
+        // Trả về chính printablePanel đã được layout đúng
+        return printablePanel;
     }
 
     private JLabel sectionTitle(String text) {

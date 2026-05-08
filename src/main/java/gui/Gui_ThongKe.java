@@ -1,255 +1,303 @@
 package gui;
 
+import com.github.lgooddatepicker.components.DatePicker;
+import com.github.lgooddatepicker.components.DatePickerSettings;
 import dto.DashboardStatsDto;
-import service.ThongKeService;
+import dto.ProductSalesDto;
+import dto.SanPhamDto;
+import dto.TaiKhoanDto;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.CategoryAxis;
+import org.jfree.chart.plot.CategoryPlot;
+import org.jfree.chart.plot.PlotOrientation;
+import org.jfree.chart.renderer.category.BarRenderer;
+import org.jfree.chart.renderer.category.LineAndShapeRenderer;
+import org.jfree.data.category.DefaultCategoryDataset;
 import service.ServiceFactory;
+import service.TaiKhoanService;
+import service.ThongKeService;
 import service.impl.ThongKeServiceImpl;
+import util.UiStyle;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.LinkedHashMap;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.Map;
-import util.UiStyle;
 
+/**
+ * Giao diện Thống kê - Dashboard
+ * Bao gồm: Thẻ tóm tắt, Biểu đồ doanh thu, Top sản phẩm và Cảnh báo tồn kho.
+ */
 public class Gui_ThongKe extends JPanel {
 
     private final ThongKeService service = ServiceFactory.get(ThongKeService.class, ThongKeServiceImpl::new);
+    private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("dd/MM");
 
-    private JSpinner spYear;
-    private JSpinner spCompareYear;
-    private ComparisonChartPanel revenueChart;
-    private BarChartPanel topCustomerChart;
-    private BarChartPanel topProductChart;
+    private String currentEmployeeId;
+    private DatePicker dpStart, dpEnd;
+    private JLabel lblRevSummary, lblInvSummary, lblProdSummary, lblEmpSummary;
+    private JPanel pnlChartContainer;
+    private JTable tblTopProducts, tblLowStock;
+    private DefaultTableModel modelTopProducts, modelLowStock;
 
     public Gui_ThongKe() {
-        setLayout(new BorderLayout());
-        setBackground(Color.WHITE);
-
-        add(createHeader(), BorderLayout.NORTH);
-        add(createContent(), BorderLayout.CENTER);
-
-        refreshCharts();
+        this(null);
     }
 
-    private JPanel createHeader() {
-        JPanel header = new JPanel(new BorderLayout());
-        header.setBackground(UiStyle.PRIMARY);
-        header.setBorder(new EmptyBorder(20, 25, 20, 25));
-
-        JLabel title = new JLabel("THỐNG KÊ");
-        title.setForeground(Color.WHITE);
-        title.setFont(new Font("Segoe UI", Font.BOLD, 28));
-        header.add(title, BorderLayout.WEST);
-
-        JPanel control = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
-        control.setBackground(UiStyle.PRIMARY);
-
-        int currentYear = java.time.LocalDate.now().getYear();
-        spYear = new JSpinner(new SpinnerNumberModel(currentYear, 2000, 2100, 1));
-        spCompareYear = new JSpinner(new SpinnerNumberModel(currentYear - 1, 2000, 2100, 1));
-        JButton btnRefresh = UiStyle.createActionButton("Tải dữ liệu", new Color(46, 125, 50), "/icon/thongke.png");
-        btnRefresh.addActionListener(e -> refreshCharts());
-
-        control.add(makeLabel("Năm:"));
-        control.add(spYear);
-        control.add(makeLabel("So sánh với:"));
-        control.add(spCompareYear);
-        control.add(btnRefresh);
-        header.add(control, BorderLayout.EAST);
-        return header;
-    }
-
-    private JPanel createContent() {
-        JPanel content = new JPanel(new GridLayout(3, 1, 14, 14));
-        content.setBorder(new EmptyBorder(14, 14, 14, 14));
-        revenueChart = new ComparisonChartPanel("Doanh thu theo tháng");
-        topCustomerChart = new BarChartPanel("Top khách hàng");
-        topProductChart = new BarChartPanel("Top sản phẩm");
-        content.add(revenueChart);
-        content.add(topCustomerChart);
-        content.add(topProductChart);
-        return content;
-    }
-
-    private JLabel makeLabel(String text) {
-        JLabel label = new JLabel(text);
-        label.setForeground(Color.WHITE);
-        return label;
-    }
-
-    private void refreshCharts() {
-        int year = (Integer) spYear.getValue();
-        int compareYear = (Integer) spCompareYear.getValue();
-        DashboardStatsDto stats = service.thongKeDoanhThu(year, compareYear);
-        revenueChart.setData(stats.getMonthlyRevenue(), stats.getCompareMonthlyRevenue(), year, compareYear);
-        topCustomerChart.setData(service.topKhachHang(year, 5));
-        topProductChart.setData(service.topSanPham(year, 5));
-    }
-
-    private abstract static class AbstractChartPanel extends JPanel {
-        protected final String title;
-        private final Color normalBg = Color.WHITE;
-        private final Color hoverBg = new Color(245, 249, 255);
-
-        protected AbstractChartPanel(String title) {
-            this.title = title;
-            setBackground(normalBg);
-            setBorder(BorderFactory.createCompoundBorder(
-                    BorderFactory.createLineBorder(new Color(220, 225, 230)),
-                    new EmptyBorder(10, 10, 10, 10)));
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) {
-                    setBackground(hoverBg);
-                    repaint();
+    public Gui_ThongKe(String tenDangNhap) {
+        if (tenDangNhap != null) {
+            try {
+                TaiKhoanService tkService = ServiceFactory.get(TaiKhoanService.class, () -> null);
+                TaiKhoanDto tk = tkService.findById(tenDangNhap);
+                if (tk != null) {
+                    this.currentEmployeeId = tk.getMaNhanVien();
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
 
-                @Override
-                public void mouseExited(MouseEvent e) {
-                    setBackground(normalBg);
-                    repaint();
-                }
+        setLayout(new BorderLayout(10, 10));
+        setBackground(UiStyle.LIGHT_BG);
+        setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        initComponents();
+        loadData();
+    }
+
+    private void initComponents() {
+        // 1. Header & Filter
+        add(createHeaderPanel(), BorderLayout.NORTH);
+
+        // 2. Center Content
+        JPanel pnlCenter = new JPanel(new BorderLayout(15, 15));
+        pnlCenter.setOpaque(false);
+
+        // Summary Cards
+        pnlCenter.add(createSummaryPanel(), BorderLayout.NORTH);
+
+        // Tabbed Pane for Charts and Tables
+        JTabbedPane tabbedPane = new JTabbedPane();
+        tabbedPane.setFont(new Font("Segoe UI", Font.BOLD, 14));
+
+        // Tab Biểu đồ
+        pnlChartContainer = new JPanel(new BorderLayout());
+        pnlChartContainer.setBackground(Color.WHITE);
+        tabbedPane.addTab("Biểu đồ doanh thu", new ImageIcon(getClass().getResource("/icon/doanhthu.png")), pnlChartContainer);
+
+        // Tab Top Sản Phẩm
+        tabbedPane.addTab("Top sản phẩm bán chạy", new ImageIcon(getClass().getResource("/icon/banhang.png")), createTopProductsPanel());
+
+        // Tab Cảnh báo tồn kho
+        tabbedPane.addTab("Cảnh báo tồn kho", new ImageIcon(getClass().getResource("/icon/phieunhap.png")), createLowStockPanel());
+
+        pnlCenter.add(tabbedPane, BorderLayout.CENTER);
+        add(pnlCenter, BorderLayout.CENTER);
+    }
+
+    private JPanel createHeaderPanel() {
+        JPanel pnlHeader = new JPanel(new BorderLayout());
+        pnlHeader.setOpaque(false);
+
+        JLabel lblTitle = new JLabel("THỐNG KÊ & DASHBOARD");
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        lblTitle.setForeground(UiStyle.PRIMARY);
+        pnlHeader.add(lblTitle, BorderLayout.WEST);
+
+        JPanel pnlFilter = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 5));
+        pnlFilter.setOpaque(false);
+
+        DatePickerSettings s1 = new DatePickerSettings();
+        s1.setFormatForDatesCommonEra("dd/MM/yyyy");
+        dpStart = new DatePicker(s1);
+        dpStart.setDate(LocalDate.now().minusDays(7));
+        dpStart.setPreferredSize(new Dimension(170, 35));
+        UiStyle.styleDatePicker(dpStart);
+
+        DatePickerSettings s2 = new DatePickerSettings();
+        s2.setFormatForDatesCommonEra("dd/MM/yyyy");
+        dpEnd = new DatePicker(s2);
+        dpEnd.setDate(LocalDate.now());
+        dpEnd.setPreferredSize(new Dimension(170, 35));
+        UiStyle.styleDatePicker(dpEnd);
+
+        JButton btnRefresh = UiStyle.createActionButton("Lọc", new Color(46, 125, 50), "/icon/thongke.png");
+        btnRefresh.setPreferredSize(new Dimension(100, 35));
+        btnRefresh.addActionListener(e -> loadData());
+
+        pnlFilter.add(new JLabel("Từ ngày:"));
+        pnlFilter.add(dpStart);
+        pnlFilter.add(new JLabel("Đến ngày:"));
+        pnlFilter.add(dpEnd);
+        pnlFilter.add(btnRefresh);
+
+        pnlHeader.add(pnlFilter, BorderLayout.EAST);
+        return pnlHeader;
+    }
+
+    private JPanel createSummaryPanel() {
+        JPanel pnlSummary = new JPanel(new GridLayout(1, 4, 15, 0));
+        pnlSummary.setOpaque(false);
+        pnlSummary.setPreferredSize(new Dimension(0, 120));
+
+        lblRevSummary = new JLabel("0 VNĐ");
+        lblInvSummary = new JLabel("0");
+        lblProdSummary = new JLabel("0");
+        lblEmpSummary = new JLabel("0 VNĐ");
+
+        pnlSummary.add(createCard("Doanh thu kỳ này", lblRevSummary, new Color(41, 128, 185), "/icon/doanhthu.png"));
+        pnlSummary.add(createCard("Doanh thu CÁ NHÂN", lblEmpSummary, new Color(155, 89, 182), "/icon/nhanvien.png"));
+        pnlSummary.add(createCard("Tổng hóa đơn", lblInvSummary, new Color(39, 174, 96), "/icon/hoadon.png"));
+        pnlSummary.add(createCard("Sản phẩm bán ra", lblProdSummary, new Color(230, 126, 34), "/icon/banhang.png"));
+
+        return pnlSummary;
+    }
+
+    private JPanel createCard(String title, JLabel lblValue, Color color, String iconPath) {
+        JPanel card = new JPanel(new BorderLayout(15, 5)) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getBackground());
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 20, 20);
+                g2.dispose();
+            }
+        };
+        card.setBackground(Color.WHITE);
+        card.setBorder(new EmptyBorder(15, 12, 15, 12));
+
+        JLabel lblTitle = new JLabel(title);
+        lblTitle.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        lblTitle.setForeground(Color.GRAY);
+        card.add(lblTitle, BorderLayout.NORTH);
+
+        lblValue.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblValue.setForeground(color);
+        card.add(lblValue, BorderLayout.CENTER);
+
+        JLabel lblIcon = new JLabel(UiStyle.loadIcon(iconPath, 35, 35));
+        card.add(lblIcon, BorderLayout.EAST);
+
+        return card;
+    }
+
+    private JPanel createTopProductsPanel() {
+        JPanel pnl = new JPanel(new BorderLayout());
+        pnl.setBackground(Color.WHITE);
+        
+        String[] cols = {"Mã SP", "Tên sản phẩm", "Số lượng bán", "Doanh thu"};
+        modelTopProducts = new DefaultTableModel(cols, 0);
+        tblTopProducts = new JTable(modelTopProducts);
+        JScrollPane scroll = new JScrollPane(tblTopProducts);
+        UiStyle.styleTable(tblTopProducts, scroll);
+        
+        pnl.add(scroll, BorderLayout.CENTER);
+        return pnl;
+    }
+
+    private JPanel createLowStockPanel() {
+        JPanel pnl = new JPanel(new BorderLayout());
+        pnl.setBackground(Color.WHITE);
+        
+        String[] cols = {"Mã SP", "Tên sản phẩm", "Loại", "Tồn kho", "Giá bán"};
+        modelLowStock = new DefaultTableModel(cols, 0);
+        tblLowStock = new JTable(modelLowStock);
+        JScrollPane scroll = new JScrollPane(tblLowStock);
+        UiStyle.styleTable(tblLowStock, scroll);
+        
+        pnl.add(scroll, BorderLayout.CENTER);
+        return pnl;
+    }
+
+    private void loadData() {
+        LocalDate start = dpStart.getDate();
+        LocalDate end = dpEnd.getDate();
+        
+        if (start == null || end == null) return;
+
+        // 1. Load Summary (Filtered by range and employee)
+        DashboardStatsDto stats = service.getStats(start, end, currentEmployeeId);
+        lblRevSummary.setText(String.format("%,.0f VNĐ", stats.getTotalRevenueToday()));
+        lblInvSummary.setText(String.valueOf(stats.getTotalInvoicesToday()));
+        lblProdSummary.setText(String.valueOf(stats.getTotalProductsSoldToday()));
+        lblEmpSummary.setText(String.format("%,.0f VNĐ", stats.getEmployeeRevenueToday()));
+
+        // 2. Load Chart and Top Products
+        updateRevenueChart(start, end);
+        updateTopProducts(start, end);
+
+        // 3. Load Low Stock
+        updateLowStock();
+    }
+
+    private void updateRevenueChart(LocalDate start, LocalDate end) {
+        Map<LocalDate, Double> data = service.getRevenueByDateRange(start, end);
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+
+        LocalDate current = start;
+        while (!current.isAfter(end)) {
+            dataset.addValue(data.getOrDefault(current, 0.0), "Doanh thu", current.format(dtf));
+            current = current.plusDays(1);
+        }
+
+        JFreeChart chart = ChartFactory.createLineChart(
+                "Biểu đồ doanh thu từ " + start.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) + " đến " + end.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
+                "Ngày", "Doanh thu (VNĐ)",
+                dataset, PlotOrientation.VERTICAL, false, true, false);
+
+        styleChart(chart);
+
+        pnlChartContainer.removeAll();
+        pnlChartContainer.add(new ChartPanel(chart), BorderLayout.CENTER);
+        pnlChartContainer.revalidate();
+        pnlChartContainer.repaint();
+    }
+
+    private void styleChart(JFreeChart chart) {
+        chart.setBackgroundPaint(Color.WHITE);
+        CategoryPlot plot = chart.getCategoryPlot();
+        plot.setBackgroundPaint(Color.WHITE);
+        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
+        
+        LineAndShapeRenderer renderer = new LineAndShapeRenderer();
+        renderer.setSeriesPaint(0, UiStyle.PRIMARY);
+        renderer.setSeriesStroke(0, new BasicStroke(2.0f));
+        plot.setRenderer(renderer);
+        
+        chart.getTitle().setFont(new Font("Segoe UI", Font.BOLD, 18));
+    }
+
+    private void updateTopProducts(LocalDate start, LocalDate end) {
+        modelTopProducts.setRowCount(0);
+        List<ProductSalesDto> list = service.getTopProducts(start, end, 10);
+        for (ProductSalesDto dto : list) {
+            modelTopProducts.addRow(new Object[]{
+                    dto.getMaSanPham(),
+                    dto.getTenSanPham(),
+                    dto.getSoLuongBan(),
+                    String.format("%,.0f", dto.getDoanhThu())
             });
         }
-
-        protected void drawTitle(Graphics2D g2) {
-            g2.setColor(new Color(40, 50, 70));
-            g2.setFont(new Font("Segoe UI", Font.BOLD, 18));
-            g2.drawString(title, 16, 26);
-        }
     }
 
-    private static final class ComparisonChartPanel extends AbstractChartPanel {
-        private Map<Integer, Double> primary = new LinkedHashMap<>();
-        private Map<Integer, Double> compare = new LinkedHashMap<>();
-        private int year;
-        private int compareYear;
-
-        private ComparisonChartPanel(String title) {
-            super(title);
-            setPreferredSize(new Dimension(1000, 260));
-        }
-
-        private void setData(Map<Integer, Double> primary, Map<Integer, Double> compare, int year, int compareYear) {
-            this.primary = primary != null ? primary : new LinkedHashMap<>();
-            this.compare = compare != null ? compare : new LinkedHashMap<>();
-            this.year = year;
-            this.compareYear = compareYear;
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            drawTitle(g2);
-            int left = 60;
-            int top = 44;
-            int width = getWidth() - 90;
-            int height = getHeight() - 80;
-            g2.setColor(new Color(245, 247, 250));
-            g2.fillRoundRect(left, top, width, height, 20, 20);
-            g2.setColor(new Color(220, 225, 230));
-            g2.drawRoundRect(left, top, width, height, 20, 20);
-
-            double max = 1;
-            for (int m = 1; m <= 12; m++) {
-                max = Math.max(max, Math.max(primary.getOrDefault(m, 0D), compare.getOrDefault(m, 0D)));
-            }
-            int chartLeft = left + 24;
-            int chartTop = top + 16;
-            int chartWidth = width - 48;
-            int chartHeight = height - 52;
-            int columnWidth = chartWidth / 12;
-
-            for (int i = 0; i <= 4; i++) {
-                int y = chartTop + chartHeight - (chartHeight * i / 4);
-                g2.setColor(new Color(225, 230, 235));
-                g2.drawLine(chartLeft, y, chartLeft + chartWidth, y);
-                g2.setColor(new Color(90, 100, 120));
-                g2.drawString(String.format("%.0f", max * i / 4), 10, y + 5);
-            }
-
-            for (int month = 1; month <= 12; month++) {
-                int x = chartLeft + (month - 1) * columnWidth + 6;
-                double primaryValue = primary.getOrDefault(month, 0D);
-                double compareValue = compare.getOrDefault(month, 0D);
-                int primaryHeight = (int) Math.round(chartHeight * (primaryValue / max));
-                int compareHeight = (int) Math.round(chartHeight * (compareValue / max));
-
-                g2.setColor(new Color(52, 152, 219));
-                g2.fillRoundRect(x, chartTop + chartHeight - primaryHeight, columnWidth / 3, primaryHeight, 8, 8);
-                g2.setColor(new Color(231, 76, 60));
-                g2.fillRoundRect(x + columnWidth / 3 + 4, chartTop + chartHeight - compareHeight, columnWidth / 3, compareHeight, 8, 8);
-
-                g2.setColor(new Color(60, 70, 90));
-                g2.drawString(String.valueOf(month), x + columnWidth / 6, chartTop + chartHeight + 18);
-            }
-
-            g2.setColor(new Color(52, 152, 219));
-            g2.fillRect(chartLeft + chartWidth - 160, chartTop - 8, 12, 12);
-            g2.setColor(Color.DARK_GRAY);
-            g2.drawString(String.valueOf(year), chartLeft + chartWidth - 140, chartTop + 2);
-            g2.setColor(new Color(231, 76, 60));
-            g2.fillRect(chartLeft + chartWidth - 80, chartTop - 8, 12, 12);
-            g2.setColor(Color.DARK_GRAY);
-            g2.drawString(String.valueOf(compareYear), chartLeft + chartWidth - 60, chartTop + 2);
-            g2.dispose();
-        }
-    }
-
-    private static final class BarChartPanel extends AbstractChartPanel {
-        private Map<String, Double> data = new LinkedHashMap<>();
-
-        private BarChartPanel(String title) {
-            super(title);
-            setPreferredSize(new Dimension(1000, 220));
-        }
-
-        private void setData(Map<String, Double> data) {
-            this.data = data != null ? data : new LinkedHashMap<>();
-            repaint();
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            drawTitle(g2);
-
-            int left = 60;
-            int top = 44;
-            int width = getWidth() - 90;
-            int height = getHeight() - 70;
-            g2.setColor(new Color(245, 247, 250));
-            g2.fillRoundRect(left, top, width, height, 20, 20);
-            g2.setColor(new Color(220, 225, 230));
-            g2.drawRoundRect(left, top, width, height, 20, 20);
-
-            double max = Math.max(1D, data.values().stream().mapToDouble(Double::doubleValue).max().orElse(1D));
-            int barArea = height - 48;
-            int barWidth = Math.max(50, width / Math.max(1, data.size()) - 16);
-            int index = 0;
-            for (Map.Entry<String, Double> entry : data.entrySet()) {
-                int x = left + 18 + index * (barWidth + 18);
-                int barHeight = (int) Math.round(barArea * (entry.getValue() / max));
-                g2.setColor(new Color(18, 78, 130));
-                g2.fillRoundRect(x, top + barArea - barHeight, barWidth, barHeight, 12, 12);
-                g2.setColor(new Color(60, 70, 90));
-                String label = entry.getKey();
-                if (label.length() > 14) {
-                    label = label.substring(0, 14) + "...";
-                }
-                g2.drawString(label, x, top + barArea + 18);
-                g2.drawString(String.format("%.0f", entry.getValue()), x, top + barArea - barHeight - 6);
-                index++;
-            }
-            g2.dispose();
+    private void updateLowStock() {
+        modelLowStock.setRowCount(0);
+        List<SanPhamDto> list = service.getLowStockProducts(10);
+        for (SanPhamDto dto : list) {
+            modelLowStock.addRow(new Object[]{
+                    dto.getMaSanPham(),
+                    dto.getTenSanPham(),
+                    dto.getTenLoaiSanPham(),
+                    dto.getSoLuongHienCo(),
+                    String.format("%,.0f", dto.getGiaBan())
+            });
         }
     }
 }
