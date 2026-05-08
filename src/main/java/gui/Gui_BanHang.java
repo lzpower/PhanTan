@@ -89,6 +89,9 @@ public class Gui_BanHang extends JPanel {
     private JTable tblChiTiet;
     private DefaultTableModel chiTietModel;
 
+    private JPanel leftPanel;
+    private JPanel rightPanel;
+
     private JTextField txtMaHoaDon;
     private JTextField txtNhanVien;
     private JTextField txtNgayTao;
@@ -283,6 +286,7 @@ public class Gui_BanHang extends JPanel {
     private JPanel createLeftPanel() {
         JPanel left = new JPanel(new BorderLayout(0, 10));
         left.setBackground(Color.WHITE);
+        this.leftPanel = left;
 
         JPanel topActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         topActions.setBackground(Color.WHITE);
@@ -371,6 +375,7 @@ public class Gui_BanHang extends JPanel {
         right.setBackground(UiStyle.LIGHT_BG);
         right.setBorder(new EmptyBorder(14, 14, 14, 14));
         right.setPreferredSize(new Dimension(430, 0));
+        this.rightPanel = right;
 
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.gridx = 0;
@@ -441,13 +446,16 @@ public class Gui_BanHang extends JPanel {
 
         lblTongCong = createValueLabel();
         row = addInfoRow(right, gbc, row, "Tạm tính", lblTongCong);
+
         lblGiamGia = createValueLabel();
         row = addInfoRow(right, gbc, row, "Giảm giá", lblGiamGia);
+
         lblSuDungDiem = createValueLabel();
         suDungDiemRow = createInfoRow("Sử dụng điểm", lblSuDungDiem);
-        suDungDiemRow.setVisible(false);
+        suDungDiemRow.setVisible(true);
         gbc.gridy = row++;
         right.add(suDungDiemRow, gbc);
+
         lblTongTien = createValueLabel();
         row = addInfoRow(right, gbc, row, "Tổng tiền", lblTongTien);
 
@@ -495,8 +503,8 @@ public class Gui_BanHang extends JPanel {
 
         JPanel fillerPanel = new JPanel();
         fillerPanel.setOpaque(false);
-        gbc.gridy = row;
-        gbc.weighty = 1.0;
+        gbc.gridy = row++;
+        gbc.weighty = 0.0;
         right.add(fillerPanel, gbc);
 
         return right;
@@ -565,7 +573,7 @@ public class Gui_BanHang extends JPanel {
         return spacer;
     }
 
-    private void loadProducts() {
+    public void loadProducts() {
         loadingProducts = true;
         cboSanPham.removeAllItems();
         List<SanPhamDto> products = sanPhamService.loadAll();
@@ -627,8 +635,10 @@ public class Gui_BanHang extends JPanel {
         cboKhuyenMai.setSelectedIndex(0);
         btnDungDiem.setText("Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
+        // enable UI controls now that an invoice exists
+        setUiEnabled(true);
 
         refreshCartTable();
         updateTotals();
@@ -863,7 +873,7 @@ public class Gui_BanHang extends JPanel {
         diemDaSuDung = 0;
         btnDungDiem.setText("Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
     }
 
@@ -884,7 +894,7 @@ public class Gui_BanHang extends JPanel {
         suDungDiem = !suDungDiem;
         btnDungDiem.setText(suDungDiem ? "Bỏ điểm" : "Dùng điểm");
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(suDungDiem && khachHangHienTai != null);
+            suDungDiemRow.setVisible(true);
         }
         updateTotals();
     }
@@ -948,7 +958,8 @@ public class Gui_BanHang extends JPanel {
         lblSuDungDiem.setText(giamGiaDiem > 0 ? "-" + formatCurrency(giamGiaDiem) : formatCurrency(0));
         lblTongTien.setText(formatCurrency(tongTien));
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(suDungDiem && khachHangHienTai != null);
+            // Always keep the row visible to avoid layout shifts; button controls still follow logic
+            suDungDiemRow.setVisible(true);
         }
 
         updateCashChange();
@@ -1049,8 +1060,8 @@ public class Gui_BanHang extends JPanel {
                     int diemDaCo = latest.getSoDiem();
                     int diemMoi = (int) Math.round(tongCong / 10000.0);
                     int tongDiem = Math.max(0, diemDaCo - (suDungDiem ? diemDaSuDung : 0)) + diemMoi;
-                    latest.setSoDiem(tongDiem);
-                    khachHangService.update(latest);
+                    // update points directly to avoid phone-unique validation during points-only update
+                    khachHangService.updatePoints(latest.getMaKhachHang(), tongDiem);
                 }
             }
         } catch (Exception ex) {
@@ -1090,6 +1101,25 @@ public class Gui_BanHang extends JPanel {
 
         loadProducts();
         resetHoaDon();
+
+        // try to refresh invoice list panel if present
+        Window w = SwingUtilities.getWindowAncestor(this);
+        Gui_HoaDon hoaDonPanel = findComponentRecursively(w, Gui_HoaDon.class);
+        if (hoaDonPanel != null) {
+            hoaDonPanel.refreshData();
+        }
+    }
+
+    private <T> T findComponentRecursively(Component root, Class<T> cls) {
+        if (root == null) return null;
+        if (cls.isInstance(root)) return cls.cast(root);
+        if (root instanceof Container) {
+            for (Component c : ((Container) root).getComponents()) {
+                T found = findComponentRecursively(c, cls);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void refreshCartTable() {
@@ -1142,7 +1172,7 @@ public class Gui_BanHang extends JPanel {
         txtTienKhachDua.setText("0");
         txtTienThoi.setText(formatCurrency(0));
         if (suDungDiemRow != null) {
-            suDungDiemRow.setVisible(false);
+            suDungDiemRow.setVisible(true);
         }
 
         if (cboKhuyenMai.getItemCount() > 0) {
@@ -1152,6 +1182,27 @@ public class Gui_BanHang extends JPanel {
         refreshCartTable();
         updatePaymentModeUi();
         updateButtonState();
+        // disable interactive controls until invoice is created
+        setUiEnabled(false);
+    }
+
+    private void setUiEnabled(boolean enabled) {
+        // btnTaoHoaDon should always stay enabled so user can create invoice
+        boolean controls = enabled;
+        cboSanPham.setEnabled(controls);
+        txtSoLuong.setEnabled(controls);
+        tblChiTiet.setEnabled(controls);
+        btnXoaSanPham.setEnabled(controls && tblChiTiet.getSelectedRow() >= 0);
+        btnLamRong.setEnabled(controls && !cart.isEmpty());
+        btnTimKhachHang.setEnabled(controls);
+        btnDungDiem.setEnabled(controls && khachHangHienTai != null && khachHangHienTai.getSoDiem() > 0);
+        cboKhuyenMai.setEnabled(controls);
+        btnTienMat.setEnabled(controls);
+        btnChuyenKhoan.setEnabled(controls);
+        txtTienKhachDua.setEnabled(controls && paymentMode == PaymentMethod.TIENMAT);
+        btnThanhToan.setEnabled(controls && !cart.isEmpty());
+        revalidate();
+        repaint();
     }
 
     private void updateButtonState() {

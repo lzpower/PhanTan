@@ -49,6 +49,16 @@ public class KhachHangServiceImpl implements KhachHangService {
     }
 
     @Override
+    public KhachHangDto updatePoints(String maKhachHang, int soDiem) {
+        KhachHang existing = dao.findById(maKhachHang);
+        if (existing == null) {
+            throw new IllegalArgumentException("Khách hàng không tồn tại: " + maKhachHang);
+        }
+        existing.setSoDiem(soDiem);
+        return Mapper.map(dao.update(existing));
+    }
+
+    @Override
     public boolean delete(String maKhachHang) {
         return dao.delete(maKhachHang);
     }

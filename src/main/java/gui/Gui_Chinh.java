@@ -16,6 +16,8 @@ import service.NhanVienService;
 import service.ServiceFactory;
 import dto.TaiKhoanDto;
 import dto.NhanVienDto;
+import service.impl.NhanVienServiceImpl;
+import service.impl.TaiKhoanServiceImpl;
 
 public class Gui_Chinh extends JFrame {
 
@@ -45,10 +47,10 @@ public class Gui_Chinh extends JFrame {
         String employeeName = tenDangNhap;
         String employeeRole = "Nhân viên";
         if (tenDangNhap != null && !tenDangNhap.isBlank()) {
-            TaiKhoanService tkService = ServiceFactory.get(TaiKhoanService.class, () -> null);
+            TaiKhoanService tkService = ServiceFactory.get(TaiKhoanService.class, TaiKhoanServiceImpl::new);
             TaiKhoanDto dto = tkService.findById(tenDangNhap);
             if (dto != null && dto.getMaNhanVien() != null && !dto.getMaNhanVien().isBlank()) {
-                NhanVienService nvService = ServiceFactory.get(NhanVienService.class, () -> null);
+                NhanVienService nvService = ServiceFactory.get(NhanVienService.class, NhanVienServiceImpl::new);
                 NhanVienDto nv = nvService.findById(dto.getMaNhanVien());
                 if (nv != null && nv.getTenChucVu() != null) {
                     employeeName = nv.getTenNhanVien() != null && !nv.getTenNhanVien().isBlank() ? nv.getTenNhanVien() : tenDangNhap;

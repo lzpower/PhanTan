@@ -286,6 +286,10 @@ public class Gui_SanPham extends JPanel {
         }
     }
 
+    public void refreshData() {
+        loadData(service.loadAll());
+    }
+
     private void filter() {
         String keyword = txtSearch.getText().trim().toLowerCase(Locale.ROOT);
         if (keyword.isEmpty()) {

@@ -30,7 +30,7 @@ import java.util.Locale;
 
 public class Gui_PhieuNhap extends JPanel {
 
-    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss dd/MM/yyyy");
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
     private final PhieuNhapService phieuNhapService = ServiceFactory.get(PhieuNhapService.class, PhieuNhapServiceImpl::new);
     private final NhaCungCapService nhaCungCapService = ServiceFactory.get(NhaCungCapService.class, NhaCungCapServiceImpl::new);
@@ -123,6 +123,8 @@ public class Gui_PhieuNhap extends JPanel {
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         sorter = new TableRowSorter<>(model);
         table.setRowSorter(sorter);
+//        sorter.setSortKeys(List.of(new RowSorter.SortKey(5, SortOrder.ASCENDING)));
+        sorter.sort();
 
         JScrollPane scrollPane = new JScrollPane(table);
         UiStyle.styleTable(table, scrollPane);
@@ -151,6 +153,7 @@ public class Gui_PhieuNhap extends JPanel {
 
     private void refreshData() {
         loadData(phieuNhapService.search(txtSearch.getText()));
+        sorter.sort();
     }
 
     private void loadData(List<PhieuNhapDto> items) {
@@ -185,7 +188,25 @@ public class Gui_PhieuNhap extends JPanel {
         dialog.setVisible(true);
         if (dialog.isSaved()) {
             refreshData();
+            // refresh product and sales panels if they exist
+            Window w = SwingUtilities.getWindowAncestor(this);
+            Gui_SanPham sanPhamPanel = findComponentRecursively(w, Gui_SanPham.class);
+            if (sanPhamPanel != null) sanPhamPanel.refreshData();
+            Gui_BanHang banHangPanel = findComponentRecursively(w, Gui_BanHang.class);
+            if (banHangPanel != null) banHangPanel.loadProducts();
         }
+    }
+
+    private <T> T findComponentRecursively(Component root, Class<T> cls) {
+        if (root == null) return null;
+        if (cls.isInstance(root)) return cls.cast(root);
+        if (root instanceof Container) {
+            for (Component c : ((Container) root).getComponents()) {
+                T found = findComponentRecursively(c, cls);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     private void showDetail(int modelRow) {

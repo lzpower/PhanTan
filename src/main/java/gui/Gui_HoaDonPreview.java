@@ -21,7 +21,7 @@ public class Gui_HoaDonPreview extends JDialog {
 
     private static final DateTimeFormatter DISPLAY_TIME = DateTimeFormatter.ofPattern("HH:mm d 'thg' M, yyyy", new Locale("vi", "VN"));
 
-    private final JPanel printablePanel;
+    private JPanel printablePanel;
     private final HoaDonDto hoaDon;
     private final PaymentSummary paymentSummary;
 
@@ -36,8 +36,9 @@ public class Gui_HoaDonPreview extends JDialog {
         setLocationRelativeTo(owner);
         getContentPane().setBackground(new Color(241, 245, 249));
 
-        printablePanel = buildPrintablePanel(details);
-        JScrollPane scrollPane = new JScrollPane(printablePanel);
+        JPanel full = buildPrintablePanel(details);
+        // printablePanel is set inside buildPrintablePanel to the inner card (print-only)
+        JScrollPane scrollPane = new JScrollPane(full);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.getViewport().setBackground(getContentPane().getBackground());
@@ -45,45 +46,76 @@ public class Gui_HoaDonPreview extends JDialog {
     }
 
     private JPanel buildPrintablePanel(List<ChiTietHoaDonDto> details) {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(getContentPane().getBackground());
-        panel.setBorder(new EmptyBorder(18, 18, 18, 18));
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.setBackground(getContentPane().getBackground());
+            panel.setBorder(new EmptyBorder(18, 18, 18, 18));
 
-        boolean successMode = paymentSummary.hasPaymentData();
+            boolean successMode = paymentSummary.hasPaymentData();
 
-        JPanel card = new JPanel(new GridBagLayout());
-        card.setBackground(Color.WHITE);
-        card.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(226, 232, 240)),
-                new EmptyBorder(18, 18, 18, 18)
-        ));
-        card.setAlignmentX(Component.LEFT_ALIGNMENT);
+            // header (UI-only, contains status title) - do not include in printable panel
+            JComponent header = buildHeader(successMode);
+            panel.add(header, BorderLayout.NORTH);
 
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weightx = 1;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.anchor = GridBagConstraints.NORTHWEST;
+            // card is the print-only content (invoice layout). Keep a reference to it in printablePanel.
+            JPanel card = new JPanel(new GridBagLayout());
+            card.setBackground(Color.WHITE);
+            card.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(new Color(226, 232, 240)),
+                    new EmptyBorder(18, 18, 18, 18)
+            ));
+            card.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        addStacked(card, gbc, buildHeader(successMode), 0);
-        addGap(card, gbc, 14);
-        addStacked(card, gbc, buildInvoiceMeta(), 0);
-        addGap(card, gbc, 14);
-        addStacked(card, gbc, divider(), 0);
-        addGap(card, gbc, 12);
-        addStacked(card, gbc, sectionTitle(successMode ? "Chi tiết thanh toán" : "Chi tiết hóa đơn"), 0);
-        addGap(card, gbc, 8);
-        addStacked(card, gbc, buildItems(details), 1);
-        addGap(card, gbc, 14);
-        addStacked(card, gbc, divider(), 0);
-        addGap(card, gbc, 12);
-        addStacked(card, gbc, buildSummary(), 0);
-        addGap(card, gbc, 12);
-        addStacked(card, gbc, buildFooter(), 0);
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.gridx = 0;
+            gbc.gridy = 0;
+            gbc.weightx = 1;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            gbc.anchor = GridBagConstraints.NORTHWEST;
 
-        panel.add(card, BorderLayout.NORTH);
-        return panel;
+            addGap(card, gbc, 0);
+            addStacked(card, gbc, buildInvoiceMeta(), 0);
+            addGap(card, gbc, 14);
+            addStacked(card, gbc, divider(), 0);
+            addGap(card, gbc, 12);
+            addStacked(card, gbc, sectionTitle(successMode ? "Chi tiết thanh toán" : "Chi tiết hóa đơn"), 0);
+            addGap(card, gbc, 8);
+            addStacked(card, gbc, buildItems(details), 1);
+            addGap(card, gbc, 14);
+            addStacked(card, gbc, divider(), 0);
+            addGap(card, gbc, 12);
+            addStacked(card, gbc, buildSummary(), 0);
+            addGap(card, gbc, 12);
+
+            // set printablePanel to the inner card so printing excludes header/title
+            this.printablePanel = card;
+
+            panel.add(card, BorderLayout.CENTER);
+
+            // actions (buttons) - place under card in the UI but not part of printed panel
+            JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+            actions.setOpaque(false);
+            JButton btnPrint = new JButton("In hóa đơn");
+            UiStyle.styleButton(btnPrint, new Color(34, 197, 94));
+            btnPrint.setPreferredSize(new Dimension(160, 40));
+            btnPrint.addActionListener(e -> printReceipt());
+
+            JButton btnPrimary = new JButton(paymentSummary.hasPaymentData() ? "Đơn mới" : "Đóng");
+            UiStyle.styleButton(btnPrimary, paymentSummary.hasPaymentData() ? new Color(16, 185, 129) : new Color(148, 163, 184));
+            btnPrimary.setPreferredSize(new Dimension(160, 40));
+            btnPrimary.addActionListener(e -> dispose());
+
+            if (paymentSummary.hasPaymentData()) {
+                actions.add(btnPrint);
+                actions.add(btnPrimary);
+            } else {
+                actions.add(btnPrimary);
+                actions.add(btnPrint);
+            }
+            panel.add(actions, BorderLayout.SOUTH);
+
+            // ensure printable panel pref size fits content
+            card.setPreferredSize(card.getPreferredSize());
+            return panel;
     }
 
     private JComponent buildHeader(boolean successMode) {
