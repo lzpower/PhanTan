@@ -1502,21 +1502,61 @@ public class Gui_BanHang extends JPanel {
     }
 
     private static final class ImageRenderer extends DefaultTableCellRenderer {
+        private static final java.util.concurrent.ConcurrentHashMap<String, ImageIcon> IMAGE_CACHE
+                = new java.util.concurrent.ConcurrentHashMap<>();
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
             JLabel label = new JLabel();
             label.setOpaque(true);
             label.setHorizontalAlignment(SwingConstants.CENTER);
             label.setBackground(isSelected ? table.getSelectionBackground() : (row % 2 == 0 ? Color.WHITE : UiStyle.ROW_ODD));
+
             String path = value == null ? "" : String.valueOf(value);
-            if (!path.isBlank()) {
-                ImageIcon icon = TableUtility.loadIcon(path, 64, 48);
-                if (icon != null) {
-                    label.setIcon(icon);
+            if (path.isBlank()) return label;
+
+            if (path.startsWith("http://") || path.startsWith("https://")) {
+                ImageIcon cached = IMAGE_CACHE.get(path);
+                if (cached != null) {
+                    // Đã có trong cache — hiện luôn
+                    label.setIcon(cached);
                 } else {
-                    label.setText(path);
+                    // Chưa có — hiện "..." và tải về
+                    label.setText("...");
+                    new Thread(() -> {
+                        try {
+                            Image downloaded = javax.imageio.ImageIO.read(URI.create(path).toURL());
+                            if (downloaded != null) {
+                                ImageIcon icon = new ImageIcon(downloaded.getScaledInstance(64, 48, Image.SCALE_SMOOTH));
+                                IMAGE_CACHE.put(path, icon);
+                                SwingUtilities.invokeLater(table::repaint);
+                            }
+                        } catch (Exception ignored) {}
+                    }).start();
+                }
+            } else {
+                try {
+                    java.io.File file = new java.io.File(path);
+                    if (file.exists()) {
+                        Image img = javax.imageio.ImageIO.read(file);
+                        if (img != null) {
+                            label.setIcon(new ImageIcon(img.getScaledInstance(64, 48, Image.SCALE_SMOOTH)));
+                        } else {
+                            label.setText("Lỗi ảnh");
+                        }
+                    } else {
+                        ImageIcon icon = TableUtility.loadIcon(path, 64, 48);
+                        if (icon != null) {
+                            label.setIcon(icon);
+                        } else {
+                            label.setText("Lỗi ảnh");
+                        }
+                    }
+                } catch (Exception e) {
+                    label.setText("Lỗi ảnh");
                 }
             }
+
             return label;
         }
     }

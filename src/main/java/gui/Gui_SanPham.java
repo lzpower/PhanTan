@@ -2,6 +2,8 @@ package gui;
 
 import dto.LoaiSanPhamDto;
 import dto.SanPhamDto;
+import network.ImageLoader;
+import network.ImageUploader;
 import service.LoaiSanPhamService;
 import service.SanPhamService;
 import service.ServiceFactory;
@@ -153,21 +155,21 @@ public class Gui_SanPham extends JPanel {
         txtHinh.setEditable(false);
         panel.add(txtHinh, gc(row++));
 
-        btnChonAnh = UiStyle.createActionButton("Chọn ảnh", new Color(52, 152, 219), "/icon/tim.png");
+        btnChonAnh = UiStyle.createActionButton("Chon anh", new Color(52, 152, 219), "/icon/tim.png");
         panel.add(btnChonAnh, gc(row++));
 
-        lblHinhAnh = new JLabel("Chưa có ảnh", SwingConstants.CENTER);
+        lblHinhAnh = new JLabel("Chua co anh", SwingConstants.CENTER);
         lblHinhAnh.setOpaque(true);
         lblHinhAnh.setBackground(Color.WHITE);
         lblHinhAnh.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
         lblHinhAnh.setPreferredSize(new Dimension(0, 180));
         panel.add(lblHinhAnh, gc(row++));
 
-        btnAdd = new JButton("Thêm");
+        btnAdd = new JButton("Them");
         UiStyle.styleButton(btnAdd, new Color(16, 185, 129));
-        btnUpdate = new JButton("Sửa");
+        btnUpdate = new JButton("Sua");
         UiStyle.styleButton(btnUpdate, new Color(52, 152, 219));
-        btnReset = new JButton("Làm mới");
+        btnReset = new JButton("Lam moi");
         UiStyle.styleButton(btnReset, new Color(26, 107, 127));
         btnUpdate.setVisible(false);
 
@@ -182,7 +184,7 @@ public class Gui_SanPham extends JPanel {
         tablePanel.setBackground(UiStyle.LIGHT_BG);
         tablePanel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        JLabel title = new JLabel("Danh sách sản phẩm");
+        JLabel title = new JLabel("Danh sach san pham");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(UiStyle.PRIMARY);
         tablePanel.add(title, BorderLayout.NORTH);
@@ -199,9 +201,11 @@ public class Gui_SanPham extends JPanel {
 
         JScrollPane scrollPane = new JScrollPane(table);
         UiStyle.styleTable(table, scrollPane);
-        // Hiển thị ảnh preview trong cột ảnh của bảng
+
+        // Giu nguyen renderer anh, them nhanh fetch tu server
         table.getColumnModel().getColumn(1).setCellRenderer(new ImageTableCellRenderer());
 
+        // Giu nguyen nut Sua/Xoa dung nhu code goc
         TableUtility.addActionColumn(table, 7, "/icon/sua.png", "/icon/xoa.png", new TableUtility.ActionButtonCallback() {
             @Override
             public void onEdit(int modelRow) {
@@ -213,13 +217,19 @@ public class Gui_SanPham extends JPanel {
                 xoaSanPham(modelRow);
             }
         });
+
         tablePanel.add(scrollPane, BorderLayout.CENTER);
         return tablePanel;
     }
 
+    // ImageTableCellRenderer: them nhanh fetch bytes tu server qua socket
     private static class ImageTableCellRenderer extends DefaultTableCellRenderer {
+        private static final java.util.concurrent.ConcurrentHashMap<String, ImageIcon> IMAGE_CACHE
+                = new java.util.concurrent.ConcurrentHashMap<>();
+
         @Override
-        public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus, int row, int column) {
             JLabel lbl = new JLabel();
             lbl.setOpaque(true);
             lbl.setHorizontalAlignment(SwingConstants.CENTER);
@@ -231,23 +241,52 @@ public class Gui_SanPham extends JPanel {
                 return lbl;
             }
 
-            try {
-                java.awt.Image img = null;
-                if (path.startsWith("http://") || path.startsWith("https://")) {
-                    img = javax.imageio.ImageIO.read(new java.net.URL(path));
+            // Nhanh 1: du lieu cu Backblaze / HTTP (giu nguyen)
+            if (path.startsWith("http://") || path.startsWith("https://")) {
+                ImageIcon cached = IMAGE_CACHE.get(path);
+                if (cached != null) {
+                    lbl.setIcon(cached);
                 } else {
-                    img = javax.imageio.ImageIO.read(new java.io.File(path));
+                    lbl.setText("...");
+                    new Thread(() -> {
+                        try {
+                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                                    new java.net.URL(path).openConnection();
+                            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                            conn.connect();
+                            java.awt.Image img = javax.imageio.ImageIO.read(conn.getInputStream());
+                            if (img != null) {
+                                ImageIcon icon = new ImageIcon(img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH));
+                                IMAGE_CACHE.put(path, icon);
+                                SwingUtilities.invokeLater(table::repaint);
+                            }
+                        } catch (Exception ignored) {}
+                    }).start();
                 }
-
-                if (img != null) {
-                    // Kích thước thumbnail thu nhỏ cho bảng (ví dụ 80x50)
-                    java.awt.Image scaledImg = img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH);
-                    lbl.setIcon(new ImageIcon(scaledImg));
-                    lbl.setText("");
+            }
+            // Nhanh 2 (MOI): ten file luu tren server, fetch bytes qua socket
+            else {
+                ImageIcon cached = IMAGE_CACHE.get(path);
+                if (cached != null) {
+                    lbl.setIcon(cached);
+                } else {
+                    lbl.setText("...");
+                    new Thread(() -> {
+                        try {
+                            byte[] bytes = ImageLoader.fetchBytes(path);
+                            if (bytes != null && bytes.length > 0) {
+                                java.awt.Image img = javax.imageio.ImageIO.read(
+                                        new java.io.ByteArrayInputStream(bytes));
+                                if (img != null) {
+                                    ImageIcon icon = new ImageIcon(
+                                            img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH));
+                                    IMAGE_CACHE.put(path, icon);
+                                    SwingUtilities.invokeLater(table::repaint);
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }).start();
                 }
-            } catch (Exception e) {
-                lbl.setIcon(null);
-                lbl.setText("Lỗi URL");
             }
             return lbl;
         }
@@ -419,6 +458,7 @@ public class Gui_SanPham extends JPanel {
         if (btnUpdate != null) btnUpdate.setVisible(true);
     }
 
+    // chonHinhAnh: thay B2Uploader bang ImageUploader (gui qua socket)
     private void chonHinhAnh() {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setFileFilter(new FileNameExtensionFilter("Hinh anh", "png", "jpg", "jpeg", "gif", "bmp"));
@@ -426,37 +466,28 @@ public class Gui_SanPham extends JPanel {
         if (result == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
             if (file != null) {
-
-                // Khóa nút bấm và đổi nhãn để báo cho người dùng biết đang tải
                 btnChonAnh.setEnabled(false);
                 lblHinhAnh.setIcon(null);
-                lblHinhAnh.setText("Đang tải ảnh lên Cloud...");
-                txtHinh.setText(""); // Xóa text cũ
+                lblHinhAnh.setText("Dang gui anh len Server...");
+                txtHinh.setText("");
 
-                // Sử dụng SwingWorker để upload ngầm, tránh đơ giao diện
                 new SwingWorker<String, Void>() {
                     @Override
                     protected String doInBackground() throws Exception {
-                        // Gọi class util vừa tạo ở Bước 2
-                        return util.B2Uploader.uploadImage(file);
+                        return ImageUploader.upload(file);
                     }
 
                     @Override
                     protected void done() {
                         try {
-                            // Lấy URL trả về sau khi upload thành công
-                            String publicUrl = get();
-
-                            // Cập nhật giao diện
-                            txtHinh.setText(publicUrl);
-                            updateImagePreview(publicUrl);
-
+                            String fileName = get();
+                            txtHinh.setText(fileName);
+                            updateImagePreview(fileName);
                         } catch (Exception ex) {
                             ex.printStackTrace();
-                            showError("Tải ảnh thất bại: Lắp sai API Key hoặc rớt mạng!");
-                            lblHinhAnh.setText("Lỗi tải ảnh");
+                            showError("Gui anh that bai: " + ex.getMessage());
+                            lblHinhAnh.setText("Loi gui anh");
                         } finally {
-                            // Mở khóa lại nút bấm
                             btnChonAnh.setEnabled(true);
                         }
                     }
@@ -465,46 +496,73 @@ public class Gui_SanPham extends JPanel {
         }
     }
 
+    // updateImagePreview: ten file thi fetch tu server, URL http giu nguyen
     private void updateImagePreview(String imagePath) {
         if (lblHinhAnh == null) return;
 
         if (imagePath == null || imagePath.isBlank()) {
             lblHinhAnh.setIcon(null);
-            lblHinhAnh.setText("Chưa có ảnh");
+            lblHinhAnh.setText("Chua co anh");
             return;
         }
 
-        try {
-            java.awt.Image img = null;
-
-            // 1. Nếu là Link Web (URL)
-            if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
-                java.net.URL url = new java.net.URL(imagePath);
-                img = javax.imageio.ImageIO.read(url);
-            }
-            // 2. Nếu là đường dẫn file trong máy tính
-            else {
-                java.io.File file = new java.io.File(imagePath);
-                if(file.exists()) {
-                    img = javax.imageio.ImageIO.read(file);
-                }
-            }
-
-            // 3. Render ảnh ra giao diện
-            if (img != null) {
-                int width = Math.max(220, lblHinhAnh.getWidth());
-                int height = Math.max(160, lblHinhAnh.getHeight());
-                java.awt.Image scaledImg = img.getScaledInstance(width, height, java.awt.Image.SCALE_SMOOTH);
-                lblHinhAnh.setIcon(new javax.swing.ImageIcon(scaledImg));
-                lblHinhAnh.setText("");
-            } else {
-                lblHinhAnh.setIcon(null);
-                lblHinhAnh.setText("Không tải được ảnh");
-            }
-        } catch (Exception e) {
+        // Du lieu cu Backblaze / HTTP
+        if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+            lblHinhAnh.setText("Dang tai anh...");
             lblHinhAnh.setIcon(null);
-            lblHinhAnh.setText("Lỗi mạng/Lỗi tải ảnh");
-            e.printStackTrace();
+            new Thread(() -> {
+                try {
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                            new java.net.URL(imagePath).openConnection();
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    conn.connect();
+                    java.awt.Image img = javax.imageio.ImageIO.read(conn.getInputStream());
+                    if (img != null) {
+                        int w = Math.max(220, lblHinhAnh.getWidth());
+                        int h = Math.max(160, lblHinhAnh.getHeight());
+                        java.awt.Image scaled = img.getScaledInstance(w, h, java.awt.Image.SCALE_SMOOTH);
+                        ImageIcon icon = new ImageIcon(scaled);
+                        SwingUtilities.invokeLater(() -> {
+                            lblHinhAnh.setIcon(icon);
+                            lblHinhAnh.setText("");
+                        });
+                    } else {
+                        SwingUtilities.invokeLater(() -> lblHinhAnh.setText("Khong tai duoc anh"));
+                    }
+                } catch (Exception e) {
+                    SwingUtilities.invokeLater(() -> lblHinhAnh.setText("Loi tai anh: " + e.getMessage()));
+                }
+            }).start();
+        }
+        // Ten file moi: fetch bytes tu server qua socket
+        else {
+            lblHinhAnh.setText("Dang tai anh...");
+            lblHinhAnh.setIcon(null);
+            new Thread(() -> {
+                try {
+                    byte[] bytes = ImageLoader.fetchBytes(imagePath);
+                    if (bytes != null && bytes.length > 0) {
+                        java.awt.Image img = javax.imageio.ImageIO.read(
+                                new java.io.ByteArrayInputStream(bytes));
+                        if (img != null) {
+                            int w = Math.max(220, lblHinhAnh.getWidth());
+                            int h = Math.max(160, lblHinhAnh.getHeight());
+                            java.awt.Image scaled = img.getScaledInstance(w, h, java.awt.Image.SCALE_SMOOTH);
+                            ImageIcon icon = new ImageIcon(scaled);
+                            SwingUtilities.invokeLater(() -> {
+                                lblHinhAnh.setIcon(icon);
+                                lblHinhAnh.setText("");
+                            });
+                        } else {
+                            SwingUtilities.invokeLater(() -> lblHinhAnh.setText("Khong doc duoc anh"));
+                        }
+                    } else {
+                        SwingUtilities.invokeLater(() -> lblHinhAnh.setText("Khong tim thay anh"));
+                    }
+                } catch (Exception e) {
+                    SwingUtilities.invokeLater(() -> lblHinhAnh.setText("Loi tai anh: " + e.getMessage()));
+                }
+            }).start();
         }
     }
 

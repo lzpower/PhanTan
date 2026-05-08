@@ -20,10 +20,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JTable;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.JTableHeader;
-import javax.swing.table.TableCellRenderer;
-import javax.swing.table.TableColumn;
+import javax.swing.table.*;
 
 public class TableUtility {
 
@@ -171,6 +168,30 @@ public class TableUtility {
 			return null;
 		}
 		return new ImageIcon(url);
+	}
+
+	public static void addDeleteColumn(JTable table, DefaultTableModel model, int column, java.util.function.Consumer<Integer> deleteAction) {
+		table.getColumnModel().getColumn(column).setCellRenderer(new DefaultTableCellRenderer() {
+			@Override
+			public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+				JButton btn = new JButton(loadIcon("/icon/xoa.png", 20, 20));
+				btn.setBorderPainted(false);
+				btn.setContentAreaFilled(false);
+				return btn;
+			}
+		});
+
+		table.addMouseListener(new java.awt.event.MouseAdapter() {
+			@Override
+			public void mouseClicked(java.awt.event.MouseEvent e) {
+				int col = table.columnAtPoint(e.getPoint());
+				int row = table.rowAtPoint(e.getPoint());
+				if (col == column && row != -1) {
+					int modelRow = table.convertRowIndexToModel(row);
+					deleteAction.accept(modelRow);
+				}
+			}
+		});
 	}
 
 	public interface ActionButtonCallback {
