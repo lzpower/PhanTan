@@ -40,11 +40,16 @@ import service.impl.PhieuNhapServiceImpl;
 import service.impl.SanPhamServiceImpl;
 import service.impl.TaiKhoanServiceImpl;
 import service.impl.ThongKeServiceImpl;
-
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.UUID;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -52,8 +57,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class Server {
-
+private static final String IMAGE_DIR = System.getenv("IMAGE_STORE_DIR") != null ? System.getenv("IMAGE_STORE_DIR") : "src/main/resources/img";
     public static void main(String[] args) {
+        // Tạo thư mục ảnh nếu chưa tồn tại
+        try {
+            Files.createDirectories(Paths.get(IMAGE_DIR));
+            System.out.println("Image store directory: " + Paths.get(IMAGE_DIR).toAbsolutePath());
+        } catch (Exception ex) {
+            System.err.println("Cảnh báo: Không thể tạo thư mục ảnh: " + ex.getMessage());
+        }
         int port = args.length > 0 ? Integer.parseInt(args[0]) : 9090;
         ExecutorService pool = Executors.newFixedThreadPool(10);
         try (ServerSocket serverSocket = new ServerSocket(port)) {
@@ -184,6 +196,19 @@ public class Server {
                     case KHACHHANG_DELETE -> new Response(khachHangService.delete((String) request.getData()), null, "deleted");
                     case KHACHHANG_NEXT_ID -> ok(khachHangService.nextId(), "generated");
 
+                    // ── MỚI: nhận bytes ảnh, lưu file, trả về tên file ──────────────
+                    case SANPHAM_UPLOAD_IMAGE -> {
+                        ImageUploadPayload payload = (ImageUploadPayload) request.getData();
+                        String savedFileName = saveImageFile(payload);
+                        yield ok(savedFileName, "uploaded");
+                    }
+
+                    // ── MỚI: client yêu cầu bytes của một ảnh theo tên file ──────────
+                    case SANPHAM_FETCH_IMAGE -> {
+                        String fileName = (String) request.getData();
+                        byte[] imageBytes = loadImageFile(fileName);
+                        yield ok(imageBytes, "fetched");
+                    }
                     case NHANVIEN_FIND_BY_ID -> ok(nhanVienService.findById((String) request.getData()), "loaded");
                     case NHANVIEN_LOAD_ALL -> ok(nhanVienService.loadAll(), "loaded");
                     case NHANVIEN_SEARCH -> ok(nhanVienService.search((String) request.getData()), "loaded");
@@ -242,7 +267,52 @@ public class Server {
                 return fail(ex.getMessage());
             }
         }
+        /**
+         * Đọc bytes ảnh từ thư mục IMAGE_DIR theo tên file.
+         * Trả về null-safe byte[] để client hiển thị.
+         */
+        private byte[] loadImageFile(String fileName) throws Exception {
+            if (fileName == null || fileName.isBlank() || fileName.contains("..") || fileName.contains("/") || fileName.contains("\\")) {
+                throw new SecurityException("Tên file không hợp lệ: " + fileName);
+            }
+            Path filePath = Paths.get(IMAGE_DIR).resolve(fileName);
+            if (!Files.exists(filePath)) {
+                throw new java.io.FileNotFoundException("Không tìm thấy ảnh: " + fileName);
+            }
+            return Files.readAllBytes(filePath);
+        }
 
+        /**
+         * Tên file được tạo tự động bằng UUID để tránh trùng lặp.
+         *
+         * @return tên file đã lưu (ví dụ "a1b2c3d4.png") — đây là giá trị lưu vào cột urlHinhAnh trong DB
+         */
+        private String saveImageFile(ImageUploadPayload payload) throws Exception {
+            if (payload == null || payload.getImageBytes() == null || payload.getImageBytes().length == 0) {
+                throw new IllegalArgumentException("Payload ảnh rỗng");
+            }
+
+            // Lấy phần mở rộng file gốc (.png, .jpg, ...)
+            String ext = "jpg";
+            String originalName = payload.getOriginalFileName();
+            if (originalName != null && originalName.contains(".")) {
+                ext = originalName.substring(originalName.lastIndexOf('.') + 1).toLowerCase();
+            }
+
+            // Tên file mới = UUID + extension, tránh trùng và tránh path traversal
+            String fileName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
+
+            Path targetDir = Paths.get(IMAGE_DIR);
+            Files.createDirectories(targetDir); // tạo nếu chưa có
+            Path targetFile = targetDir.resolve(fileName);
+
+            try (FileOutputStream fos = new FileOutputStream(targetFile.toFile())) {
+                fos.write(payload.getImageBytes());
+            }
+
+            System.out.println("Đã lưu ảnh: " + targetFile.toAbsolutePath());
+            return fileName; // client lưu tên này vào DB
+        }
         private void logRequest(Request request, Response response) {
             String clientName = request != null && request.getClientName() != null && !request.getClientName().isBlank()
                     ? request.getClientName().trim()
