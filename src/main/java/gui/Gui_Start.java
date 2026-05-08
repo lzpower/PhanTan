@@ -32,7 +32,7 @@ public class Gui_Start extends JFrame implements ActionListener {
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setResizable(false);
 
-        ClientSession.configureRemote("Dell-6N85", 9090, ClientSession.defaultClientName());
+        ClientSession.configureRemote("DESKTOP-HAK9M95", 9090, ClientSession.defaultClientName());
         taiKhoanService = ServiceFactory.get(TaiKhoanService.class, () -> null);
 
         JPanel mainPanel = new JPanel();

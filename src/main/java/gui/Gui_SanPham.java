@@ -223,24 +223,31 @@ public class Gui_SanPham extends JPanel {
             JLabel lbl = new JLabel();
             lbl.setOpaque(true);
             lbl.setHorizontalAlignment(SwingConstants.CENTER);
-            if (isSelected) {
-                lbl.setBackground(table.getSelectionBackground());
-            } else {
-                lbl.setBackground(Color.WHITE);
-            }
+            lbl.setBackground(isSelected ? table.getSelectionBackground() : Color.WHITE);
+
             String path = value == null ? "" : String.valueOf(value);
             if (path.isBlank()) {
-                lbl.setText("");
                 lbl.setIcon(null);
                 return lbl;
             }
-            ImageIcon icon = TableUtility.loadIcon(path, 80, 50);
-            if (icon != null && icon.getIconWidth() > 0) {
-                lbl.setIcon(icon);
-                lbl.setText("");
-            } else {
+
+            try {
+                java.awt.Image img = null;
+                if (path.startsWith("http://") || path.startsWith("https://")) {
+                    img = javax.imageio.ImageIO.read(new java.net.URL(path));
+                } else {
+                    img = javax.imageio.ImageIO.read(new java.io.File(path));
+                }
+
+                if (img != null) {
+                    // Kích thước thumbnail thu nhỏ cho bảng (ví dụ 80x50)
+                    java.awt.Image scaledImg = img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH);
+                    lbl.setIcon(new ImageIcon(scaledImg));
+                    lbl.setText("");
+                }
+            } catch (Exception e) {
                 lbl.setIcon(null);
-                lbl.setText(new File(path).getName());
+                lbl.setText("Lỗi URL");
             }
             return lbl;
         }
@@ -415,29 +422,86 @@ public class Gui_SanPham extends JPanel {
         if (result == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
             if (file != null) {
-                txtHinh.setText(file.getAbsolutePath());
-                updateImagePreview(file.getAbsolutePath());
+
+                // Khóa nút bấm và đổi nhãn để báo cho người dùng biết đang tải
+                btnChonAnh.setEnabled(false);
+                lblHinhAnh.setIcon(null);
+                lblHinhAnh.setText("Đang tải ảnh lên Cloud...");
+                txtHinh.setText(""); // Xóa text cũ
+
+                // Sử dụng SwingWorker để upload ngầm, tránh đơ giao diện
+                new SwingWorker<String, Void>() {
+                    @Override
+                    protected String doInBackground() throws Exception {
+                        // Gọi class util vừa tạo ở Bước 2
+                        return util.B2Uploader.uploadImage(file);
+                    }
+
+                    @Override
+                    protected void done() {
+                        try {
+                            // Lấy URL trả về sau khi upload thành công
+                            String publicUrl = get();
+
+                            // Cập nhật giao diện
+                            txtHinh.setText(publicUrl);
+                            updateImagePreview(publicUrl);
+
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            showError("Tải ảnh thất bại: Lắp sai API Key hoặc rớt mạng!");
+                            lblHinhAnh.setText("Lỗi tải ảnh");
+                        } finally {
+                            // Mở khóa lại nút bấm
+                            btnChonAnh.setEnabled(true);
+                        }
+                    }
+                }.execute();
             }
         }
     }
 
     private void updateImagePreview(String imagePath) {
-        if (lblHinhAnh == null) {
-            return;
-        }
+        if (lblHinhAnh == null) return;
+
         if (imagePath == null || imagePath.isBlank()) {
             lblHinhAnh.setIcon(null);
             lblHinhAnh.setText("Chưa có ảnh");
             return;
         }
-        ImageIcon icon = TableUtility.loadIcon(imagePath, Math.max(220, lblHinhAnh.getWidth()), Math.max(160, lblHinhAnh.getHeight()));
-        if (icon == null || icon.getIconWidth() <= 0) {
+
+        try {
+            java.awt.Image img = null;
+
+            // 1. Nếu là Link Web (URL)
+            if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+                java.net.URL url = new java.net.URL(imagePath);
+                img = javax.imageio.ImageIO.read(url);
+            }
+            // 2. Nếu là đường dẫn file trong máy tính
+            else {
+                java.io.File file = new java.io.File(imagePath);
+                if(file.exists()) {
+                    img = javax.imageio.ImageIO.read(file);
+                }
+            }
+
+            // 3. Render ảnh ra giao diện
+            if (img != null) {
+                int width = Math.max(220, lblHinhAnh.getWidth());
+                int height = Math.max(160, lblHinhAnh.getHeight());
+                java.awt.Image scaledImg = img.getScaledInstance(width, height, java.awt.Image.SCALE_SMOOTH);
+                lblHinhAnh.setIcon(new javax.swing.ImageIcon(scaledImg));
+                lblHinhAnh.setText("");
+            } else {
+                lblHinhAnh.setIcon(null);
+                lblHinhAnh.setText("Không tải được ảnh");
+            }
+        } catch (Exception e) {
             lblHinhAnh.setIcon(null);
-            lblHinhAnh.setText("Không tải được ảnh");
-            return;
+            lblHinhAnh.setText("Lỗi mạng/Lỗi tải ảnh");
+            e.printStackTrace();
         }
-        lblHinhAnh.setText("");
-        lblHinhAnh.setIcon(icon);
     }
 
     private void showError(String message) {

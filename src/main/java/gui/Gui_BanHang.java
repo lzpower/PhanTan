@@ -1235,15 +1235,45 @@ public class Gui_BanHang extends JPanel {
             JLabel label = new JLabel();
             label.setOpaque(true);
             label.setHorizontalAlignment(SwingConstants.CENTER);
+
+            // Giữ nguyên logic màu nền xen kẽ của bạn
             label.setBackground(isSelected ? table.getSelectionBackground() : (row % 2 == 0 ? Color.WHITE : UiStyle.ROW_ODD));
+
             String path = value == null ? "" : String.valueOf(value);
-            if (!path.isBlank()) {
-                ImageIcon icon = TableUtility.loadIcon(path, 64, 48);
-                if (icon != null) {
-                    label.setIcon(icon);
-                } else {
-                    label.setText(path);
+            if (path.isBlank()) {
+                label.setIcon(null);
+                label.setText("");
+                return label;
+            }
+
+            try {
+                java.awt.Image img = null;
+
+                // 1. Kiểm tra nếu là Link Web (URL)
+                if (path.startsWith("http://") || path.startsWith("https://")) {
+                    img = javax.imageio.ImageIO.read(new java.net.URL(path));
                 }
+                // 2. Nếu là file local trong máy tính
+                else {
+                    java.io.File file = new java.io.File(path);
+                    if (file.exists()) {
+                        img = javax.imageio.ImageIO.read(file);
+                    }
+                }
+
+                // 3. Render ảnh ra Label
+                if (img != null) {
+                    // Giữ kích thước 64x48 theo thiết kế cũ của bạn
+                    java.awt.Image scaledImg = img.getScaledInstance(64, 48, java.awt.Image.SCALE_SMOOTH);
+                    label.setIcon(new ImageIcon(scaledImg));
+                    label.setText("");
+                } else {
+                    label.setIcon(null);
+                    label.setText("Lỗi ảnh");
+                }
+            } catch (Exception e) {
+                label.setIcon(null);
+                label.setText("Lỗi URL");
             }
             return label;
         }

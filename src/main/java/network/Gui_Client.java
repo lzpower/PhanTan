@@ -32,7 +32,7 @@ import java.util.Map;
 
 public class Gui_Client extends JFrame {
 
-    private static final String DEFAULT_HOST = "Dell-6N85";
+    private static final String DEFAULT_HOST = "DESKTOP-HAK9M95";
     private static final int DEFAULT_PORT = 9090;
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
