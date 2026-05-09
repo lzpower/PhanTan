@@ -80,7 +80,7 @@ public class Gui_SanPham extends JPanel {
         header.setBackground(UiStyle.PRIMARY);
         header.setBorder(new EmptyBorder(20, 25, 20, 25));
 
-        JLabel title = new JLabel("QUAN LY SAN PHAM");
+        JLabel title = new JLabel("QUẢN LÝ SẢN PHẨM");
         title.setForeground(Color.WHITE);
         title.setFont(new Font("Segoe UI", Font.BOLD, 28));
 
@@ -90,7 +90,7 @@ public class Gui_SanPham extends JPanel {
         searchPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 55));
         searchPanel.setBorder(new EmptyBorder(10, 0, 0, 0));
 
-        JLabel searchLabel = new JLabel("Tim kiem:");
+        JLabel searchLabel = new JLabel("Tìm kiếm:");
         searchLabel.setForeground(Color.WHITE);
         searchLabel.setFont(searchLabel.getFont().deriveFont(18f));
 
@@ -118,7 +118,7 @@ public class Gui_SanPham extends JPanel {
         gbc.weightx = 1;
         gbc.insets = new Insets(6, 0, 6, 0);
 
-        JLabel title = new JLabel("Thong tin san pham");
+        JLabel title = new JLabel("Thông tin sản phẩm");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(UiStyle.PRIMARY);
         gbc.gridy = 0;
@@ -126,50 +126,50 @@ public class Gui_SanPham extends JPanel {
         panel.add(title, gbc);
 
         int row = 1;
-        panel.add(label("Ma san pham:"), gc(row++));
+        panel.add(label("Mã sản phẩm:"), gc(row++));
         txtMa = new JTextField();
         txtMa.setEditable(false);
         txtMa.setEnabled(false);
         panel.add(txtMa, gc(row++));
 
-        panel.add(label("Ten san pham:"), gc(row++));
+        panel.add(label("Tên sản phẩm:"), gc(row++));
         txtTen = new JTextField();
         panel.add(txtTen, gc(row++));
 
-        panel.add(label("Loai san pham:"), gc(row++));
+        panel.add(label("Loại sản phẩm:"), gc(row++));
         cboLoai = new JComboBox<>();
         panel.add(cboLoai, gc(row++));
 
-        panel.add(label("So luong hien co:"), gc(row++));
+        panel.add(label("Số lượng hiện có:"), gc(row++));
         txtSoLuong = new JTextField();
         txtSoLuong.setEditable(false);
         txtSoLuong.setEnabled(false);
         panel.add(txtSoLuong, gc(row++));
 
-        panel.add(label("Gia ban:"), gc(row++));
+        panel.add(label("Giá bán:"), gc(row++));
         txtGiaBan = new JTextField();
         panel.add(txtGiaBan, gc(row++));
 
-        panel.add(label("URL hinh anh:"), gc(row++));
+        panel.add(label("URL hình ảnh:"), gc(row++));
         txtHinh = new JTextField();
         txtHinh.setEditable(false);
         panel.add(txtHinh, gc(row++));
 
-        btnChonAnh = UiStyle.createActionButton("Chon anh", new Color(52, 152, 219), "/icon/tim.png");
+        btnChonAnh = UiStyle.createActionButton("Chọn ảnh", new Color(52, 152, 219), "/icon/tim.png");
         panel.add(btnChonAnh, gc(row++));
 
-        lblHinhAnh = new JLabel("Chua co anh", SwingConstants.CENTER);
+        lblHinhAnh = new JLabel("Chưa có ảnh", SwingConstants.CENTER);
         lblHinhAnh.setOpaque(true);
         lblHinhAnh.setBackground(Color.WHITE);
         lblHinhAnh.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
         lblHinhAnh.setPreferredSize(new Dimension(0, 180));
         panel.add(lblHinhAnh, gc(row++));
 
-        btnAdd = new JButton("Them");
+        btnAdd = new JButton("Thêm");
         UiStyle.styleButton(btnAdd, new Color(16, 185, 129));
-        btnUpdate = new JButton("Sua");
+        btnUpdate = new JButton("Sửa");
         UiStyle.styleButton(btnUpdate, new Color(52, 152, 219));
-        btnReset = new JButton("Lam moi");
+        btnReset = new JButton("Làm mới");
         UiStyle.styleButton(btnReset, new Color(26, 107, 127));
         btnUpdate.setVisible(false);
 
@@ -184,12 +184,12 @@ public class Gui_SanPham extends JPanel {
         tablePanel.setBackground(UiStyle.LIGHT_BG);
         tablePanel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-        JLabel title = new JLabel("Danh sach san pham");
+        JLabel title = new JLabel("Danh sách sản phẩm");
         title.setFont(new Font("Segoe UI", Font.BOLD, 20));
         title.setForeground(UiStyle.PRIMARY);
         tablePanel.add(title, BorderLayout.NORTH);
 
-        model = new DefaultTableModel(new Object[]{"STT", "Hinh anh", "Ma", "Ten", "Loai", "So luong", "Gia ban", "Thao tac"}, 0) {
+        model = new DefaultTableModel(new Object[]{"STT", "Hình ảnh", "Mã", "Tên", "Loại", "Số lượng", "Gia hạn", "Thao tác"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -399,7 +399,7 @@ public class Gui_SanPham extends JPanel {
     private void updateProduct() {
         try {
             if (txtMa.getText().isBlank()) {
-                showError("Chon mot san pham de cap nhat.");
+                showError("Chọn một sản phẩm để cập nhật.");
                 return;
             }
             SanPhamDto dto = collectForm();
@@ -414,7 +414,7 @@ public class Gui_SanPham extends JPanel {
 
     private void xoaSanPham(int row) {
         String ma = String.valueOf(model.getValueAt(row, 2));
-        int confirm = JOptionPane.showConfirmDialog(this, "Xoa san pham nay?", "Xac nhan", JOptionPane.YES_NO_OPTION);
+        int confirm = JOptionPane.showConfirmDialog(this, "Xóa sản phẩm này", "Xác nhận", JOptionPane.YES_NO_OPTION);
         if (confirm == JOptionPane.YES_OPTION) {
             service.delete(ma);
             loadData(service.search(txtSearch.getText()));
@@ -468,7 +468,7 @@ public class Gui_SanPham extends JPanel {
             if (file != null) {
                 btnChonAnh.setEnabled(false);
                 lblHinhAnh.setIcon(null);
-                lblHinhAnh.setText("Dang gui anh len Server...");
+                lblHinhAnh.setText("Đang gữi ảnh lên server...");
                 txtHinh.setText("");
 
                 new SwingWorker<String, Void>() {
