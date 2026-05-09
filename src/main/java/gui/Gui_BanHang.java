@@ -67,7 +67,7 @@ public class Gui_BanHang extends JPanel {
 
     // ── SePay / VietQR ──────────────────────────────────────────────────────────
     private static final String SEPAY_WEBHOOK_URL  = "https://sepay-receiver.thinh-tools.workers.dev";
-    private static final String VIETQR_BANK_CODE   = "970418";          // BIDV BIN
+//    private static final String VIETQR_BANK_CODE   = "970418";          // BIDV BIN
     private static final String BANK_ACCOUNT       = "96247NHT3075";
     private static final String ACCOUNT_NAME       = "NHT3075";
     private static final HttpClient HTTP_CLIENT    = HttpClient.newHttpClient();
@@ -158,26 +158,42 @@ public class Gui_BanHang extends JPanel {
             }
         });
         txtSoLuong.addActionListener(e -> addOrUpdateFromForm());
+        txtTienKhachDua.addFocusListener(new java.awt.event.FocusAdapter() {
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                // Khi click vào: xóa định dạng, chỉ giữ số thuần để gõ tiếp
+                updatingCashChange = true;
+                try {
+                    String raw = txtTienKhachDua.getText()
+                            .replace(".", "").replace(",", "").replace("đ", "").replaceAll("\\s+", "").trim();
+                    txtTienKhachDua.setText(raw.isEmpty() || raw.equals("0") ? "" : raw);
+                } finally {
+                    updatingCashChange = false;
+                }
+                txtTienKhachDua.selectAll();
+            }
+
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                // Khi rời ô: định dạng lại có dấu chấm
+                formatTienKhachDua();
+            }
+        });
+
         txtTienKhachDua.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) {
-                if (!updatingCashChange) {
-                    updateCashChange();
-                }
+                if (!updatingCashChange) updateCashChange();
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
-                if (!updatingCashChange) {
-                    updateCashChange();
-                }
+                if (!updatingCashChange) updateCashChange();
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                if (!updatingCashChange) {
-                    updateCashChange();
-                }
+                if (!updatingCashChange) updateCashChange();
             }
         });
 
@@ -1126,8 +1142,8 @@ public class Gui_BanHang extends JPanel {
                         giamGiaKhuyenMai,
                         giamGiaDiem,
                         tongTien,
-                        paymentMode == PaymentMethod.TIENMAT ? tienKhachDua : null,
-                        paymentMode == PaymentMethod.TIENMAT ? tienThoi : null
+                        paymentMode == PaymentMethod.TIENMAT ? tienKhachDua : tongTien,
+                        paymentMode == PaymentMethod.TIENMAT ? tienThoi : 0D
                 )
         );
         dialog.setVisible(true);
@@ -1164,6 +1180,7 @@ public class Gui_BanHang extends JPanel {
      * @return {@code true} nếu SePay báo PAID, {@code false} nếu hủy
      */
     private boolean showTransferPaymentDialog(double tongTien, String maHoaDon) {
+
         // Chuẩn hoá mã: chỉ giữ chữ + số, phải khớp regex [a-zA-Z]+\d+
         String payCode = maHoaDon.toUpperCase().replaceAll("[^A-Z0-9]", "");
         if (!payCode.matches("[A-Z]+\\d+")) {
@@ -1173,10 +1190,19 @@ public class Gui_BanHang extends JPanel {
 
         long amountLong = Math.round(tongTien);
         String qrImageUrl = String.format(
-                "https://img.vietqr.io/image/%s-%s-compact2.png?amount=%d&addInfo=%s&accountName=%s",
-                VIETQR_BANK_CODE, BANK_ACCOUNT, amountLong, finalPayCode, ACCOUNT_NAME
+                "https://qr.sepay.vn/img?bank=BIDV&acc=%s&template=compact&amount=%d&des=%s",
+                BANK_ACCOUNT, amountLong, finalPayCode
         );
-
+        // Thêm vào đầu method showTransferPaymentDialog(), sau khi có finalPayCode
+        try {
+            String registerBody = "{\"code\":\"" + finalPayCode + "\",\"expectedAmount\":" + amountLong + "}";
+            HttpRequest registerReq = HttpRequest.newBuilder()
+                    .uri(URI.create(SEPAY_WEBHOOK_URL + "/register"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(registerBody))
+                    .build();
+            HTTP_CLIENT.send(registerReq, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ignored) {}
         // ── Dialog ───────────────────────────────────────────────────────────
         Window owner = SwingUtilities.getWindowAncestor(this);
         JDialog dialog = new JDialog(owner, "Thanh toán chuyển khoản", Dialog.ModalityType.APPLICATION_MODAL);
@@ -1319,10 +1345,40 @@ public class Gui_BanHang extends JPanel {
                             statusLbl.setText("✅  Thanh toán thành công!");
                             statusLbl.setForeground(new Color(46, 125, 50));
                             cancelBtn.setEnabled(false);
-                            // Short delay so user sees the success message
                             Timer closeTimer = new Timer(1200, ev -> dialog.dispose());
                             closeTimer.setRepeats(false);
                             closeTimer.start();
+                        });
+                    } else if (body != null && body.contains("\"status\":\"WRONG_AMOUNT\"")) {
+                        stopPolling.set(true);
+                        timerRef[0].stop();
+                        // Parse số tiền thực tế từ JSON
+                        long actualAmount = 0;
+                        try {
+                            int idx = body.indexOf("\"amount\":");
+                            if (idx >= 0) {
+                                String sub = body.substring(idx + 9).replaceAll("[^0-9].*", "");
+                                actualAmount = Long.parseLong(sub);
+                            }
+                        } catch (Exception ignored) {}
+                        final long finalActual = actualAmount;
+                        SwingUtilities.invokeLater(() -> {
+                            statusLbl.setText("⚠️  Số tiền không khớp!");
+                            statusLbl.setForeground(new Color(180, 60, 0));
+                            int choice = JOptionPane.showConfirmDialog(
+                                    dialog,
+                                    "Số tiền không khớp!\n" +
+                                            "Đơn hàng:     " + VND_FORMAT.format(amountLong) + " đ\n" +
+                                            "Khách chuyển: " + VND_FORMAT.format(finalActual) + " đ\n\n" +
+                                            "Vẫn xác nhận thanh toán?",
+                                    "Cảnh báo",
+                                    JOptionPane.YES_NO_OPTION,
+                                    JOptionPane.WARNING_MESSAGE
+                            );
+                            if (choice == JOptionPane.YES_OPTION) {
+                                paymentConfirmed.set(true);
+                            }
+                            dialog.dispose();
                         });
                     }
                 } catch (Exception ex) {
@@ -1488,6 +1544,26 @@ public class Gui_BanHang extends JPanel {
         } catch (NumberFormatException ex) {
             return 0D;
         }
+    }
+    private void formatTienKhachDua() {
+        updatingCashChange = true;
+        try {
+            String raw = txtTienKhachDua.getText()
+                    .replace(".", "").replace(",", "").replace("đ", "").replaceAll("\\s+", "").trim();
+            if (raw.isEmpty()) {
+                txtTienKhachDua.setText("0");
+            } else {
+                try {
+                    long value = Long.parseLong(raw);
+                    txtTienKhachDua.setText(VND_FORMAT.format(value));
+                } catch (NumberFormatException ex) {
+                    txtTienKhachDua.setText("0");
+                }
+            }
+        } finally {
+            updatingCashChange = false;
+        }
+        updateCashChange();
     }
 
     private static DefaultTableCellRenderer centerRenderer() {

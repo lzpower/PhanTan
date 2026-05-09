@@ -48,7 +48,11 @@ public class Gui_QuanLiKhachHang extends JPanel {
 
         loadData(service.loadAll());
         resetForm();
-
+        addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
+                loadData(service.search(txtSearch.getText()));
+            }
+        });
         btnAdd.addActionListener(e -> addCustomer());
         btnUpdate.addActionListener(e -> updateCustomer());
         btnReset.addActionListener(e -> resetForm());
