@@ -72,6 +72,13 @@ public class Gui_SanPham extends JPanel {
                 fillFormFromSelectedRow();
             }
         });
+
+        // Reload dữ liệu mỗi khi panel được hiển thị lại (chuyển tab, quay lại từ màn hình khác)
+        addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & java.awt.event.HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
+                loadData(service.loadAll());
+            }
+        });
     }
 
     private JPanel createHeader() {
@@ -222,10 +229,14 @@ public class Gui_SanPham extends JPanel {
         return tablePanel;
     }
 
-    // ImageTableCellRenderer: them nhanh fetch bytes tu server qua socket
+    // ImageTableCellRenderer: fix request trung lap bang FETCHING guard
     private static class ImageTableCellRenderer extends DefaultTableCellRenderer {
+        // Cache icon da scale: key = ten file hoac URL
         private static final java.util.concurrent.ConcurrentHashMap<String, ImageIcon> IMAGE_CACHE
                 = new java.util.concurrent.ConcurrentHashMap<>();
+        // Guard: danh dau nhung file DANG duoc fetch, tranh nhieu thread fetch cung 1 file
+        private static final java.util.Set<String> FETCHING
+                = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value,
@@ -235,60 +246,80 @@ public class Gui_SanPham extends JPanel {
             lbl.setHorizontalAlignment(SwingConstants.CENTER);
             lbl.setBackground(isSelected ? table.getSelectionBackground() : Color.WHITE);
 
-            String path = value == null ? "" : String.valueOf(value);
+            String path = value == null ? "" : String.valueOf(value).trim();
             if (path.isBlank()) {
                 lbl.setIcon(null);
                 return lbl;
             }
 
-            // Nhanh 1: du lieu cu Backblaze / HTTP (giu nguyen)
+            // Co cache roi: hien thi ngay, KHONG fetch them bat ke repaint bao nhieu lan
+            ImageIcon cached = IMAGE_CACHE.get(path);
+            if (cached != null) {
+                if (cached.getIconWidth() > 0) lbl.setIcon(cached);
+                return lbl;
+            }
+
+            // Chua co cache: hien thi placeholder va fetch (neu chua ai dang fetch)
+            lbl.setText("...");
+            if (!FETCHING.add(path)) {
+                // Co thread khac dang fetch file nay roi, bo qua
+                return lbl;
+            }
+
+            // Nhanh 1: du lieu cu Backblaze / HTTP
             if (path.startsWith("http://") || path.startsWith("https://")) {
-                ImageIcon cached = IMAGE_CACHE.get(path);
-                if (cached != null) {
-                    lbl.setIcon(cached);
-                } else {
-                    lbl.setText("...");
-                    new Thread(() -> {
-                        try {
-                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
-                                    new java.net.URL(path).openConnection();
-                            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                            conn.connect();
-                            java.awt.Image img = javax.imageio.ImageIO.read(conn.getInputStream());
+                new Thread(() -> {
+                    try {
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                                new java.net.URL(path).openConnection();
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                        conn.setConnectTimeout(5000);
+                        conn.setReadTimeout(5000);
+                        conn.connect();
+                        java.awt.Image img = javax.imageio.ImageIO.read(conn.getInputStream());
+                        if (img != null) {
+                            ImageIcon icon = new ImageIcon(img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH));
+                            IMAGE_CACHE.put(path, icon);
+                            SwingUtilities.invokeLater(table::repaint);
+                        } else {
+                            IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rong, khong retry
+                        }
+                    } catch (Exception ignored) {
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rong, khong retry
+                    } finally {
+                        FETCHING.remove(path);
+                    }
+                }, "img-http-" + path.hashCode()).start();
+            }
+            // Nhanh 2: ten file luu tren server, fetch bytes qua socket
+            else {
+                new Thread(() -> {
+                    try {
+                        byte[] bytes = ImageLoader.fetchBytes(path); // 1 socket request duy nhat
+                        if (bytes != null && bytes.length > 0) {
+                            java.awt.Image img = javax.imageio.ImageIO.read(
+                                    new java.io.ByteArrayInputStream(bytes));
                             if (img != null) {
                                 ImageIcon icon = new ImageIcon(img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH));
                                 IMAGE_CACHE.put(path, icon);
                                 SwingUtilities.invokeLater(table::repaint);
+                                return;
                             }
-                        } catch (Exception ignored) {}
-                    }).start();
-                }
-            }
-            // Nhanh 2 (MOI): ten file luu tren server, fetch bytes qua socket
-            else {
-                ImageIcon cached = IMAGE_CACHE.get(path);
-                if (cached != null) {
-                    lbl.setIcon(cached);
-                } else {
-                    lbl.setText("...");
-                    new Thread(() -> {
-                        try {
-                            byte[] bytes = ImageLoader.fetchBytes(path);
-                            if (bytes != null && bytes.length > 0) {
-                                java.awt.Image img = javax.imageio.ImageIO.read(
-                                        new java.io.ByteArrayInputStream(bytes));
-                                if (img != null) {
-                                    ImageIcon icon = new ImageIcon(
-                                            img.getScaledInstance(80, 50, java.awt.Image.SCALE_SMOOTH));
-                                    IMAGE_CACHE.put(path, icon);
-                                    SwingUtilities.invokeLater(table::repaint);
-                                }
-                            }
-                        } catch (Exception ignored) {}
-                    }).start();
-                }
+                        }
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rong, khong retry
+                    } catch (Exception ignored) {
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rong, khong retry
+                    } finally {
+                        FETCHING.remove(path);
+                    }
+                }, "img-socket-" + path).start();
             }
             return lbl;
+        }
+
+        /** Xoa cache 1 file — goi sau khi upload anh moi cho san pham */
+        static void evict(String fileName) {
+            if (fileName != null) { IMAGE_CACHE.remove(fileName); FETCHING.remove(fileName); }
         }
     }
 
@@ -482,6 +513,8 @@ public class Gui_SanPham extends JPanel {
                         try {
                             String fileName = get();
                             txtHinh.setText(fileName);
+                            // Xoa cache cu cua file nay de bang hien thi anh moi ngay
+                            ImageTableCellRenderer.evict(fileName);
                             updateImagePreview(fileName);
                         } catch (Exception ex) {
                             ex.printStackTrace();

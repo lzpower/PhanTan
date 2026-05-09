@@ -23,6 +23,7 @@ import service.impl.KhuyenMaiServiceImpl;
 import service.impl.NhanVienServiceImpl;
 import service.impl.SanPhamServiceImpl;
 import service.impl.TaiKhoanServiceImpl;
+import network.ImageLoader;
 import util.TableUtility;
 import util.UiStyle;
 
@@ -67,7 +68,7 @@ public class Gui_BanHang extends JPanel {
 
     // ── SePay / VietQR ──────────────────────────────────────────────────────────
     private static final String SEPAY_WEBHOOK_URL  = "https://sepay-receiver.thinh-tools.workers.dev";
-//    private static final String VIETQR_BANK_CODE   = "970418";          // BIDV BIN
+    //    private static final String VIETQR_BANK_CODE   = "970418";          // BIDV BIN
     private static final String BANK_ACCOUNT       = "96247NHT3075";
     private static final String ACCOUNT_NAME       = "NHT3075";
     private static final HttpClient HTTP_CLIENT    = HttpClient.newHttpClient();
@@ -1580,6 +1581,9 @@ public class Gui_BanHang extends JPanel {
     private static final class ImageRenderer extends DefaultTableCellRenderer {
         private static final java.util.concurrent.ConcurrentHashMap<String, ImageIcon> IMAGE_CACHE
                 = new java.util.concurrent.ConcurrentHashMap<>();
+        // Guard: đánh dấu những file ĐANG được fetch, tránh nhiều thread fetch cùng 1 file
+        private static final java.util.Set<String> FETCHING
+                = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
@@ -1588,52 +1592,78 @@ public class Gui_BanHang extends JPanel {
             label.setHorizontalAlignment(SwingConstants.CENTER);
             label.setBackground(isSelected ? table.getSelectionBackground() : (row % 2 == 0 ? Color.WHITE : UiStyle.ROW_ODD));
 
-            String path = value == null ? "" : String.valueOf(value);
+            String path = value == null ? "" : String.valueOf(value).trim();
             if (path.isBlank()) return label;
 
+            // Có cache rồi: hiển thị ngay, KHÔNG fetch thêm dù repaint bao nhiêu lần
+            ImageIcon cached = IMAGE_CACHE.get(path);
+            if (cached != null) {
+                if (cached.getIconWidth() > 0) label.setIcon(cached);
+                return label;
+            }
+
+            // Chưa có cache: hiện placeholder và fetch (nếu chưa ai đang fetch)
+            label.setText("...");
+            if (!FETCHING.add(path)) {
+                // Có thread khác đang fetch file này rồi, bỏ qua
+                return label;
+            }
+
+            // Nhánh 1: dữ liệu cũ Backblaze / HTTP
             if (path.startsWith("http://") || path.startsWith("https://")) {
-                ImageIcon cached = IMAGE_CACHE.get(path);
-                if (cached != null) {
-                    // Đã có trong cache — hiện luôn
-                    label.setIcon(cached);
-                } else {
-                    // Chưa có — hiện "..." và tải về
-                    label.setText("...");
-                    new Thread(() -> {
-                        try {
-                            Image downloaded = javax.imageio.ImageIO.read(URI.create(path).toURL());
-                            if (downloaded != null) {
-                                ImageIcon icon = new ImageIcon(downloaded.getScaledInstance(64, 48, Image.SCALE_SMOOTH));
+                new Thread(() -> {
+                    try {
+                        java.net.HttpURLConnection conn = (java.net.HttpURLConnection)
+                                new java.net.URL(path).openConnection();
+                        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                        conn.setConnectTimeout(5000);
+                        conn.setReadTimeout(5000);
+                        conn.connect();
+                        Image img = javax.imageio.ImageIO.read(conn.getInputStream());
+                        if (img != null) {
+                            ImageIcon icon = new ImageIcon(img.getScaledInstance(64, 48, Image.SCALE_SMOOTH));
+                            IMAGE_CACHE.put(path, icon);
+                            SwingUtilities.invokeLater(table::repaint);
+                        } else {
+                            IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rỗng, không retry
+                        }
+                    } catch (Exception ignored) {
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rỗng, không retry
+                    } finally {
+                        FETCHING.remove(path);
+                    }
+                }, "img-http-" + path.hashCode()).start();
+            }
+            // Nhánh 2: tên file lưu trên server, fetch bytes qua socket
+            else {
+                new Thread(() -> {
+                    try {
+                        byte[] bytes = ImageLoader.fetchBytes(path);
+                        if (bytes != null && bytes.length > 0) {
+                            Image img = javax.imageio.ImageIO.read(
+                                    new java.io.ByteArrayInputStream(bytes));
+                            if (img != null) {
+                                ImageIcon icon = new ImageIcon(img.getScaledInstance(64, 48, Image.SCALE_SMOOTH));
                                 IMAGE_CACHE.put(path, icon);
                                 SwingUtilities.invokeLater(table::repaint);
+                                return;
                             }
-                        } catch (Exception ignored) {}
-                    }).start();
-                }
-            } else {
-                try {
-                    java.io.File file = new java.io.File(path);
-                    if (file.exists()) {
-                        Image img = javax.imageio.ImageIO.read(file);
-                        if (img != null) {
-                            label.setIcon(new ImageIcon(img.getScaledInstance(64, 48, Image.SCALE_SMOOTH)));
-                        } else {
-                            label.setText("Lỗi ảnh");
                         }
-                    } else {
-                        ImageIcon icon = TableUtility.loadIcon(path, 64, 48);
-                        if (icon != null) {
-                            label.setIcon(icon);
-                        } else {
-                            label.setText("Lỗi ảnh");
-                        }
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rỗng, không retry
+                    } catch (Exception ignored) {
+                        IMAGE_CACHE.put(path, new ImageIcon()); // placeholder rỗng, không retry
+                    } finally {
+                        FETCHING.remove(path);
                     }
-                } catch (Exception e) {
-                    label.setText("Lỗi ảnh");
-                }
+                }, "img-socket-" + path).start();
             }
 
             return label;
+        }
+
+        /** Xóa cache 1 file — gọi sau khi upload ảnh mới */
+        static void evict(String fileName) {
+            if (fileName != null) { IMAGE_CACHE.remove(fileName); FETCHING.remove(fileName); }
         }
     }
 
