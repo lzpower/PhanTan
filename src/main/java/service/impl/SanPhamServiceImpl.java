@@ -59,17 +59,19 @@ public class SanPhamServiceImpl implements SanPhamService {
 
     @Override
     public String nextId() {
-        return loadAll().stream()
+        List<String> existingIds = loadAll().stream()
                 .map(SanPhamDto::getMaSanPham)
-                .filter(id -> id != null && id.startsWith("SP"))
-                .map(id -> id.substring(2))
-                .filter(number -> number.matches("\\d+"))
-                .mapToInt(Integer::parseInt)
-                .max()
-                .stream()
-                .mapToObj(number -> String.format("SP%03d", number + 1))
-                .findFirst()
-                .orElse("SP001");
+                .collect(java.util.stream.Collectors.toList());
+
+        String newId;
+        java.util.Random random = new java.util.Random();
+        do {
+            // Random 10 số còn lại (sau "89")
+            long suffix = (long) (random.nextDouble() * 9_999_999_999L) + 1;
+            newId = String.format("89%010d", suffix);
+        } while (existingIds.contains(newId)); // Đảm bảo không trùng
+
+        return newId;
     }
 
     private SanPham buildEntity(SanPhamDto dto) {

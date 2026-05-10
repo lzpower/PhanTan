@@ -135,8 +135,7 @@ public class Gui_SanPham extends JPanel {
         int row = 1;
         panel.add(label("Mã sản phẩm:"), gc(row++));
         txtMa = new JTextField();
-        txtMa.setEditable(false);
-        txtMa.setEnabled(false);
+
         panel.add(txtMa, gc(row++));
 
         panel.add(label("Tên sản phẩm:"), gc(row++));
@@ -417,8 +416,17 @@ public class Gui_SanPham extends JPanel {
 
     private void addProduct() {
         try {
+            String ma = txtMa.getText().trim();
+            if (ma.isBlank()) {
+                showError("Vui lòng nhập mã sản phẩm.");
+                return;
+            }
+            if (service.findById(ma) != null) {
+                showError("Mã sản phẩm đã tồn tại.");
+                return;
+            }
             SanPhamDto dto = collectForm();
-            dto.setMaSanPham(service.nextId());
+            dto.setMaSanPham(ma);
             service.save(dto);
             loadData(service.search(txtSearch.getText()));
             resetForm();
@@ -466,7 +474,7 @@ public class Gui_SanPham extends JPanel {
     }
 
     private void resetForm() {
-        txtMa.setText(service.nextId());
+        txtMa.setText("");  // Để trống cho người dùng tự nhập
         txtTen.setText("");
         if (cboLoai.getItemCount() > 0) {
             cboLoai.setSelectedIndex(0);
